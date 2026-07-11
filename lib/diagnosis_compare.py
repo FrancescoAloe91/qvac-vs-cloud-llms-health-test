@@ -34,12 +34,19 @@ def _normalize(text: str) -> str:
 # answer's score. So: look for an explicit "differential diagnosis" style
 # header first and scope the extraction to that section; only fall back to
 # scanning the whole text if no such header exists.
+#
+# Anchored to the start of a line (like _SECTION_STOP_HEADER below): without
+# this anchor, generic words like "assessment" or "impression" match inside
+# ordinary filler prose too — e.g. a ChatGPT reply that opens with "here is
+# my assessment of this case" would hijack the header match before the real
+# "Differential diagnosis" section even appears, and the diagnosis section
+# would come back empty/garbage.
 _DIAGNOSIS_HEADER = re.compile(
-    r"(?:differential diagnos[ie]s|likely diagnos[ie]s|most likely diagnosis|"
-    r"top diagnos[ie]s|probable diagnos[ie]s|primary diagnosis|"
-    r"clinical impression|impression|assessment(?: and plan)?|"
-    r"diagnosi differenziale|diagnosi principale|diagnosi pi[uù] probabile|"
-    r"ipotesi diagnostic[ah])\s*[:\-–]?\s*",
+    r"(?:^|\n)\s*(?:[-•*]\s*)?(?:\**)\s*(?:differential diagnos[ie]s|likely diagnos[ie]s|"
+    r"most likely diagnos[ie]s|top diagnos[ie]s|probable diagnos[ie]s|primary diagnos[ie]s|"
+    r"clinical impression|assessment(?: and plan)?|"
+    r"diagnosi differenziale|diagnosi principal[ei]|diagnos[ei] pi[uù] probabil[ei]|"
+    r"ipotesi diagnostic[ah][ei]?)\s*[:\-–]?\s*",
     re.IGNORECASE,
 )
 
@@ -65,7 +72,12 @@ def _diagnosis_section(text: str):
     stop = _SECTION_STOP_HEADER.search(text, start)
     end = stop.start() if stop else len(text)
     section = text[start:end].strip()
-    return section or None
+    # A genuine diagnosis section is at least a short phrase — a header match
+    # immediately followed by another section (or by punctuation only) is a
+    # sign the header matched somewhere spurious, not a real section boundary.
+    if not section or len(section) < 6:
+        return None
+    return section
 
 
 def extract_diagnoses(text: str) -> list[str]:
