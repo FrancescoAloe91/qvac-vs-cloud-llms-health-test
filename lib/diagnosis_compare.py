@@ -179,23 +179,38 @@ def extract_keywords(text: str) -> set[str]:
 
 
 def jaccard_similarity(a: set, b: set) -> float:
-    """Jaccard overlap between two keyword sets, perceptually recalibrated.
+    """Length-robust keyword overlap between two sets, 0-1.
 
-    Raw bag-of-words Jaccard on short clinical text is much harsher than
-    real clinical agreement — two paraphrased answers about the very same
-    diagnosis can still share few exact words. The ratio is stretched with
-    a square root: 0 stays 0, 1 stays 1, ordering between models is fully
-    preserved, but partial overlap reads closer to how a clinician would
-    actually judge "these two mostly agree" instead of looking like a
-    near-failing score.
+    Plain Jaccard (intersection / union) has a serious blind spot for this
+    use case: it silently punishes *thoroughness*. A model that writes a
+    long, safety-conscious, multi-differential answer has a much bigger
+    keyword set than one that writes three words — so even when every
+    single concept the terse model mentioned is fully confirmed by the
+    thorough one, the union balloons with the extra (still correct, still
+    relevant) vocabulary and the ratio collapses. In real testing this
+    made the more careful/complete cloud answers score *worse* than a
+    one-line answer purely for including more detail, which is the
+    opposite of what a clinically honest KPI should reward.
+
+    Fix: blend classic Jaccard (stretched with a square root for
+    perceptual calibration, as before) with the overlap coefficient
+    (intersection / size of the *smaller* set), which measures "is
+    everything the shorter answer said also present in the other one" and
+    is insensitive to one side simply saying more. Two genuinely different
+    diagnoses still score 0 either way (no shared vocabulary at all), so
+    this does not create false agreement — it only stops penalizing real
+    agreement that happens to be worded at different lengths.
     """
     if not a and not b:
         return 0.0
     union = a | b
     if not union:
         return 0.0
-    raw = len(a & b) / len(union)
-    return raw ** 0.5
+    inter = len(a & b)
+    raw_jaccard = inter / len(union)
+    smaller = min(len(a), len(b))
+    overlap_coef = (inter / smaller) if smaller else 0.0
+    return (raw_jaccard ** 0.5 + overlap_coef) / 2
 
 
 def diagnosis_overlap(diag_a: list[str], diag_b: list[str]) -> float:

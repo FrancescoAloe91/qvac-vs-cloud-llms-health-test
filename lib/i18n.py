@@ -67,8 +67,8 @@ _STRINGS = {
             "**Reliability** = how much a model's diagnoses overlap with every other model's on this case (shared wording) · "
             "**Accuracy (consensus)** = how much its single top diagnosis, specifically, overlaps with every other model's top diagnosis (same idea as Reliability, zoomed into just the #1 pick) · "
             "**Semantic similarity** = how close its diagnosis is *in meaning* to the others, measured with a small local embedding model — this is what catches two models agreeing in substance but phrasing it differently · "
-            "**Final score** = a weighted blend of the three (35/35/30%, or averaged with clinical accuracy vs. your reference if provided), so paraphrasing isn't punished like a real disagreement · "
-            "**Privacy** = 100% on-device (QVAC) vs. 0% cloud."
+            "**Final score** = a weighted blend of *only these three* (35/35/30%, or averaged with clinical accuracy vs. your reference if provided), so paraphrasing isn't punished like a real disagreement · "
+            "**Privacy** = 100% on-device (QVAC) vs. 0% cloud — shown for context, but deliberately **not** included in the Final score average: it is a separate, non-negotiable dimension, not something a model should be able to trade off against diagnostic quality."
         ),
         "narrative.section": "Why this ranking?",
         "narrative.section_caption": "Auto-generated from the same metrics above — no manual editing, no hidden scoring. TPS/TTFT aren't available for cloud sites without an API, so this focuses on what can be measured honestly: the actual diagnostic content each model produced.",
@@ -385,8 +385,8 @@ _STRINGS = {
             "**Affidabilità** = quanto le diagnosi di un modello coincidono (a parole) con quelle di tutti gli altri su questo caso · "
             "**Accuratezza (consenso)** = quanto la sua sola diagnosi principale coincide con la diagnosi principale di ogni altro modello (stessa logica dell'Affidabilità, ma solo sulla prima ipotesi) · "
             "**Similarità semantica** = quanto la sua diagnosi si avvicina *nel significato* alle altre, misurata con un piccolo modello di embedding locale — è ciò che cattura due modelli che concordano nella sostanza ma con parole diverse · "
-            "**Punteggio finale** = una media pesata delle tre (35/35/30%, oppure combinata con l'accuratezza clinica vs. il tuo riferimento se inserito), cosi' dire la stessa cosa con parole diverse non viene penalizzato come un vero disaccordo · "
-            "**Privacy** = 100% on-device (QVAC) vs. 0% cloud."
+            "**Punteggio finale** = una media pesata di *solo queste tre* (35/35/30%, oppure combinata con l'accuratezza clinica vs. il tuo riferimento se inserito), cosi' dire la stessa cosa con parole diverse non viene penalizzato come un vero disaccordo · "
+            "**Privacy** = 100% on-device (QVAC) vs. 0% cloud — mostrata per contesto, ma volutamente **non** inclusa nella media del Punteggio finale: è una dimensione separata e non negoziabile, non qualcosa che un modello dovrebbe poter scambiare con la qualità diagnostica."
         ),
         "narrative.section": "Perché questa classifica?",
         "narrative.section_caption": "Generata automaticamente dalle stesse metriche qui sopra — nessuna modifica manuale, nessun punteggio nascosto. TPS/TTFT non sono misurabili sui siti cloud senza API, quindi qui il focus è su ciò che si può misurare onestamente: il contenuto diagnostico reale prodotto da ciascun modello.",
