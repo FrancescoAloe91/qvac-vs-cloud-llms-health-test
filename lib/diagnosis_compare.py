@@ -25,6 +25,49 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower().strip())
 
 
+# Real structured answers (ChatGPT/Claude in particular) very often lead with
+# an "immediate priorities / recommended tests" numbered list *before* the
+# actual differential diagnosis. If we just grab the first numbered list in
+# the whole text, that action-item list gets mistaken for the diagnosis —
+# and since the primary diagnosis drives both the consensus-accuracy and the
+# semantic-similarity KPI, this alone can crater an otherwise-correct
+# answer's score. So: look for an explicit "differential diagnosis" style
+# header first and scope the extraction to that section; only fall back to
+# scanning the whole text if no such header exists.
+_DIAGNOSIS_HEADER = re.compile(
+    r"(?:differential diagnos[ie]s|likely diagnos[ie]s|most likely diagnosis|"
+    r"top diagnos[ie]s|probable diagnos[ie]s|primary diagnosis|"
+    r"clinical impression|impression|assessment(?: and plan)?|"
+    r"diagnosi differenziale|diagnosi principale|diagnosi pi[uù] probabile|"
+    r"ipotesi diagnostic[ah])\s*[:\-–]?\s*",
+    re.IGNORECASE,
+)
+
+_SECTION_STOP_HEADER = re.compile(
+    r"(?:^|\n)\s*(?:\**)\s*(?:immediate (?:priorities|actions|steps)|"
+    r"recommended (?:tests|workup|investigations)|next steps|"
+    r"management(?: plan)?|treatment(?: plan)?|plan\b|urgency|triage|"
+    r"tests?(?: to (?:order|obtain))?|work[- ]?up|monitoring|follow[- ]?up|"
+    r"red flags?|esami(?: da (?:richiedere|fare))?|piano (?:terapeutico|d.azione)|"
+    r"azioni immediate|urgenza|gestione)\s*[:\-–]?",
+    re.IGNORECASE,
+)
+
+
+def _diagnosis_section(text: str):
+    """Slice of `text` right after a diagnosis-labeled header, stopping at the
+    next section header (tests/plan/urgency/...) if any. Returns ``None`` if
+    no explicit diagnosis header is found."""
+    header = _DIAGNOSIS_HEADER.search(text)
+    if not header:
+        return None
+    start = header.end()
+    stop = _SECTION_STOP_HEADER.search(text, start)
+    end = stop.start() if stop else len(text)
+    section = text[start:end].strip()
+    return section or None
+
+
 def extract_diagnoses(text: str) -> list[str]:
     """Estrae voci di diagnosi differenziale da un output LLM.
 
@@ -33,12 +76,14 @@ def extract_diagnoses(text: str) -> list[str]:
     (numbered lists, bullets, bold headers) and only falls back to a loose
     sentence-level heuristic if none of them find anything — this keeps the
     downstream KPIs from collapsing to zero just because a model wrote prose
-    instead of a numbered list.
+    instead of a numbered list. If an explicit "differential diagnosis"
+    header exists, that section is parsed and prioritized first so the
+    primary diagnosis is never accidentally a recommended test or action
+    item from an earlier list in the same response.
     """
     if not text:
         return []
 
-    diagnoses = []
     patterns = [
         r"(?:^|\n)\s*\d+[\.\)]\s*(.+?)(?=\n\s*\d+[\.\)]|\n\n|$)",
         r"(?:^|\n)\s*[-•]\s*(.+?)(?=\n[-•]|\n\n|$)",
@@ -47,18 +92,51 @@ def extract_diagnoses(text: str) -> list[str]:
         r"(?:most likely|probable diagnosis|likely diagnosis|top diagnosis|primary diagnosis|"
         r"diagnosi pi[uù] probabile|diagnosi principale|ipotesi diagnostica)\s*[:\-]\s*(.+?)(?:\n|\.|$)",
     ]
-    for pattern in patterns:
-        for match in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
-            item = match.group(1).strip()
-            item = re.sub(r"\*+", "", item)
-            item = re.sub(
-                r"\s*[-–(]\s*(ALTA|MOLTO ALTA|MODERATA|BASSA|HIGH|VERY HIGH|MODERATE|LOW)\b.*$",
-                "",
-                item,
-                flags=re.I,
-            )
-            if len(item) > 8 and item not in diagnoses:
-                diagnoses.append(item[:120])
+
+    def _scan(blob: str) -> list[str]:
+        found = []
+        for pattern in patterns:
+            for match in re.finditer(pattern, blob, re.IGNORECASE | re.MULTILINE):
+                item = match.group(1).strip()
+                item = re.sub(r"\*+", "", item)
+                item = re.sub(
+                    r"\s*[-–(]\s*(ALTA|MOLTO ALTA|MODERATA|BASSA|HIGH|VERY HIGH|MODERATE|LOW)\b.*$",
+                    "",
+                    item,
+                    flags=re.I,
+                )
+                if len(item) > 8 and item not in found:
+                    found.append(item[:120])
+        return found
+
+    diagnoses = []
+    # Prioritize the explicitly-labeled diagnosis section (if any) so an
+    # earlier "immediate priorities/tests" list never becomes diagnoses[0].
+    section = _diagnosis_section(text)
+    if section:
+        scanned = _scan(section)
+        if scanned:
+            diagnoses.extend(scanned)
+        else:
+            # The header was found but its section is plain prose (e.g.
+            # "Primary diagnosis: X" with no bullets/numbers) — split on
+            # sentence/line/comma boundaries instead of falling through to
+            # an unrelated numbered list elsewhere in the text.
+            for chunk in re.split(r"[.\n]+", section):
+                chunk = re.sub(
+                    r"^\s*(?:other possibilit(?:y|ies)|altern(?:a|e)tiv[ea]s?|"
+                    r"altre possibilit[aà])\s*[:\-–]\s*",
+                    "",
+                    chunk.strip(" ,;"),
+                    flags=re.I,
+                )
+                for part in chunk.split(","):
+                    part = part.strip()
+                    if len(part) > 3 and part not in diagnoses:
+                        diagnoses.append(part[:120])
+    for item in _scan(text):
+        if item not in diagnoses:
+            diagnoses.append(item)
 
     if not diagnoses:
         for line in text.splitlines():
