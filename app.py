@@ -55,6 +55,8 @@ for k, v in [
     ("session_history", []),
     ("sell_step", None),
     ("qvac_thinking", ""),
+    ("output_tier", {}),
+    ("output_tier_text_cache", {}),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -83,6 +85,8 @@ def _load_case(case_id: str) -> None:
     st.session_state.case_text_version += 1
     st.session_state.benchmark_results = {}
     st.session_state.user_outputs = {}
+    st.session_state.output_tier = {}
+    st.session_state.output_tier_text_cache = {}
     for key in ALL_KEYS:
         if widget_key(key) in st.session_state:
             del st.session_state[widget_key(key)]
@@ -541,6 +545,8 @@ if run_benchmark:
         st.session_state.benchmark_results = {"qvac": qvac}
         set_output_widget("qvac", content)
         st.session_state.user_outputs["qvac"] = content
+        st.session_state.output_tier["qvac"] = tier_choice
+        st.session_state.output_tier_text_cache["qvac"] = content.strip()
         st.session_state.qvac_thinking = qvac.get("thinking", "")
         # Deliberately do NOT touch chatgpt/claude/gemini here: running (or
         # re-running) QVAC must never erase what the user already pasted from
@@ -583,8 +589,6 @@ c3, c4 = st.columns(2)
 
 for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
     cfg = MODEL_CONFIG[key]
-    tier_lbl = TIERS[tier_choice].label if cfg["cloud"] else _L(lang)["local"]
-    badge = TIER_BADGE.get(tier_choice, "tier-local") if cfg["cloud"] else "tier-local"
 
     with col:
         wk = widget_key(key)
@@ -595,6 +599,26 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
             st.session_state[wk] = initial
 
         current_text = st.session_state.get(wk, "").strip()
+
+        # Cloud boxes are filled by hand from an external chat, so the app
+        # has no way to *know* which tier's prompt actually produced that
+        # text — it can only record which tier was selected the moment this
+        # box's content last changed, and flag it if the selector has since
+        # moved on. This keeps the tier badge honest instead of always
+        # showing the current selector value as if it were guaranteed.
+        if current_text:
+            if st.session_state.output_tier_text_cache.get(key) != current_text:
+                st.session_state.output_tier[key] = tier_choice
+                st.session_state.output_tier_text_cache[key] = current_text
+        else:
+            st.session_state.output_tier.pop(key, None)
+            st.session_state.output_tier_text_cache.pop(key, None)
+
+        recorded_tier = st.session_state.output_tier.get(key, tier_choice)
+        tier_mismatch = bool(current_text) and recorded_tier != tier_choice
+        tier_lbl = TIERS[recorded_tier].label if cfg["cloud"] else _L(lang)["local"]
+        badge = TIER_BADGE.get(recorded_tier, "tier-local") if cfg["cloud"] else "tier-local"
+
         word_count = len(current_text.split()) if current_text else 0
         status_html = (
             f'<span class="status-pill status-filled">{t("card.status_filled", lang, n=word_count)}</span>'
@@ -619,6 +643,16 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
             f"</div></div>",
             unsafe_allow_html=True,
         )
+        if tier_mismatch:
+            st.caption(
+                "⚠️ "
+                + t(
+                    "card.tier_mismatch",
+                    lang,
+                    old=TIERS[recorded_tier].label,
+                    new=TIERS[tier_choice].label,
+                )
+            )
 
         placeholder = (
             t("output.placeholder_cloud", lang)

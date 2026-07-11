@@ -219,6 +219,7 @@ _STRINGS = {
         # Model cards
         "card.instructions_cloud": "Open **{name}** with the Link ↗ above, paste the identical prompt there, then paste its answer into this box.",
         "card.instructions_local": "Generated automatically on-device by QVAC MedPsy 4B — nothing ever leaves this computer.",
+        "card.tier_mismatch": "This answer was pasted while **{old}** was selected — **{new}** is selected now. Copy the new prompt, get a fresh answer, and re-paste it for a fair same-tier comparison.",
         "card.status_empty": "⏳ Awaiting paste",
         "card.status_filled": "✓ Pasted · {n} words",
         "card.view_full": "🔍 Read full response",
@@ -535,6 +536,7 @@ _STRINGS = {
         # Model cards
         "card.instructions_cloud": "Apri **{name}** dal Link ↗ qui sopra, incolla lì lo stesso prompt, poi incolla qui la sua risposta.",
         "card.instructions_local": "Generato automaticamente in locale da QVAC MedPsy 4B — nessun dato lascia questo computer.",
+        "card.tier_mismatch": "Questa risposta è stata incollata quando era selezionato **{old}** — ora è selezionato **{new}**. Copia il nuovo prompt, ottieni una risposta nuova e incollala di nuovo per un confronto corretto a parità di tier.",
         "card.status_empty": "⏳ In attesa di incolla",
         "card.status_filled": "✓ Incollato · {n} parole",
         "card.view_full": "🔍 Leggi risposta completa",
