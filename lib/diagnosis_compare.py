@@ -293,7 +293,12 @@ def compute_semantic_scores(active: dict, diagnoses: dict) -> dict:
     primary_text = {}
     for k in keys:
         if diagnoses.get(k):
-            primary_text[k] = diagnoses[k][0]
+            # Join the top 2 differential items (not just the very first
+            # line): a single short line is fragile input for an embedding
+            # model — one slightly-off extraction can tank the whole score.
+            # A couple of items give the embedding model enough clinical
+            # context to anchor on the actual condition being discussed.
+            primary_text[k] = ". ".join(diagnoses[k][:2])
         else:
             primary_text[k] = " ".join(active[k].get("output", "").split()[:40])
 
@@ -373,7 +378,7 @@ def compare_with_gold_standard(gold_text: str, diagnoses: dict, keys: list) -> d
                 jaccard_similarity(model_kw, gold_all_kw) * 100, 1
             ) if gold_all_kw else 0.0
 
-        sim = embeddings.semantic_similarity_pct(model_diags[0], gold_primary_text)
+        sim = embeddings.semantic_similarity_pct(". ".join(model_diags[:2]), gold_primary_text)
         semantic_accuracy[k] = sim
         if sim is not None:
             semantic_available = True
@@ -475,6 +480,7 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
         "reliability": final["reliability"],
         "reliability_pairs": final["reliability_pairs"],
         "accuracy_consensus": final["accuracy_consensus"],
+        "accuracy_pairs": final["accuracy_pairs"],
         "primary_keywords": final["primary_keywords"],
         "consensus_keywords": final["consensus_keywords"],
         "consensus_keyword_counts": final["consensus_keyword_counts"],
@@ -530,7 +536,7 @@ def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -
         reliability[k] = round(sum(pair_scores) / len(pair_scores), 1) if pair_scores else 0.0
 
     # Consenso: keyword della diagnosi primaria (o, in assenza di una lista
-    # riconosciuta, le prime parole della risposta) presenti in >= meta' modelli.
+    # riconosciuta, le prime parole della risposta).
     primary_kw = {}
     for k in keys:
         if diagnoses.get(k):
@@ -546,28 +552,39 @@ def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -
 
     n_models = len(primary_kw)
     threshold = max(2, (n_models + 1) // 2)
+    # "consensus_set" (words used by a majority of models) is kept only as
+    # human-readable context for the explanation dialog ("these are the
+    # words most models agree on") — it is deliberately NOT the scoring
+    # mechanism below anymore. A hard majority-vote-per-word threshold is a
+    # cliff edge: a model can be squarely on-topic and still get an exact,
+    # misleading 0% just because its specific word choice never crossed the
+    # vote count, even while every other signal (reliability, semantic
+    # similarity) shows it agrees with at least one peer. Accuracy is
+    # therefore computed the same way reliability is — a smooth pairwise
+    # average against every other model — but scoped to the primary
+    # diagnosis only, so it stays a distinct signal from reliability
+    # (which looks at the *whole* differential list).
     consensus_set = {w for w, c in word_counts.items() if c >= threshold}
 
     accuracy_consensus = {}
-    union_kw = set().union(*keywords.values()) if keywords else set()
+    accuracy_pairs = {k: {} for k in keys}
     for k, kw in primary_kw.items():
-        if consensus_set:
-            accuracy_consensus[k] = round(
-                jaccard_similarity(kw, consensus_set) * 100, 1
-            )
-        elif union_kw:
-            # No word reaches majority support (models disagree a lot on this
-            # case) — fall back to overlap with the pooled vocabulary of all
-            # responses so the score reflects "how on-topic" the model was
-            # rather than flattening everyone to zero.
-            accuracy_consensus[k] = round(jaccard_similarity(keywords.get(k, set()), union_kw) * 100, 1)
-        else:
+        others = [j for j in keys if j != k]
+        if not others:
             accuracy_consensus[k] = 0.0
+            continue
+        pair_scores = []
+        for j in others:
+            pair_val = round(jaccard_similarity(kw, primary_kw.get(j, set())) * 100, 1)
+            accuracy_pairs[k][j] = pair_val
+            pair_scores.append(pair_val)
+        accuracy_consensus[k] = round(sum(pair_scores) / len(pair_scores), 1)
 
     return {
         "reliability": reliability,
         "reliability_pairs": reliability_pairs,
         "accuracy_consensus": accuracy_consensus,
+        "accuracy_pairs": accuracy_pairs,
         "primary_keywords": primary_kw,
         "consensus_keywords": sorted(consensus_set),
         "consensus_keyword_counts": {w: c for w, c in word_counts.items() if w in consensus_set},

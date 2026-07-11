@@ -10,7 +10,7 @@ _STRINGS = {
         "page_title": "QVAC vs Cloud LLMs - Health Test",
         "lang_label": "Language",
         "title": "QVAC vs Cloud LLMs - Health Test",
-        "subtitle": "Same prompt · Selected tier · Manual cloud · Local QVAC · Diagnosis comparison",
+        "subtitle": "Identical prompt for every model · QVAC-only depth setting · Manual cloud paste · Diagnosis comparison",
         "sidebar.reset": "Reset",
         "sidebar.reset_help": "Clear everything including wallet to 0 USDT",
         "sidebar.wallet": "Wallet",
@@ -22,14 +22,15 @@ _STRINGS = {
         "sidebar.vlm_extract": "Extract text",
         "sidebar.vlm_add": "Add to case",
         "case.clinical": "Clinical case",
-        "tier.section": "Analysis depth",
-        "tier.radio": "Tier — same for ChatGPT, Claude and Gemini",
-        "prompt.expander": "Identical prompt for all models",
+        "tier.section": "QVAC analysis depth",
+        "tier.radio": "QVAC on-device depth — has no effect on the cloud prompt",
+        "tier.qvac_only_tag": "QVAC only, not the cloud models",
+        "prompt.expander": "Identical prompt for all models (no tier — fully untiered)",
         "prompt.copy": "Copy prompt to clipboard",
         "prompt.copied": "Prompt copied. Paste it manually on each cloud site.",
         "browser.open": "Open ChatGPT, Claude and Gemini in the browser",
         "browser.help": "Opens 3 tabs. Copy and paste the prompt on each site manually.",
-        "caption.cloud": "Cloud sites cannot be embedded in this dashboard (security). Paste responses below. QVAC MedPsy generates the diagnosis locally.",
+        "caption.cloud": "Cloud sites cannot be embedded in this dashboard (security). Paste responses below. The depth selector only changes how QVAC MedPsy reasons on-device — ChatGPT, Claude and Gemini always receive the exact same plain prompt, so the comparison stays fair.",
         "benchmark.run": "Run benchmark",
         "benchmark.spinner": "Running local QVAC inference...",
         "browser.opened": "Opened",
@@ -64,9 +65,9 @@ _STRINGS = {
         "ranking.section": "Ranking & score",
         "ranking.legend": (
             "**Reliability** = how much a model's diagnoses overlap with every other model's on this case (shared wording) · "
-            "**Accuracy (consensus)** = how well its top diagnosis matches the keywords most other models also used · "
+            "**Accuracy (consensus)** = how much its single top diagnosis, specifically, overlaps with every other model's top diagnosis (same idea as Reliability, zoomed into just the #1 pick) · "
             "**Semantic similarity** = how close its diagnosis is *in meaning* to the others, measured with a small local embedding model — this is what catches two models agreeing in substance but phrasing it differently · "
-            "**Final score** = a weighted blend of the three (30/30/40%, or averaged with clinical accuracy vs. your reference if provided), so paraphrasing isn't punished like a real disagreement · "
+            "**Final score** = a weighted blend of the three (35/35/30%, or averaged with clinical accuracy vs. your reference if provided), so paraphrasing isn't punished like a real disagreement · "
             "**Privacy** = 100% on-device (QVAC) vs. 0% cloud."
         ),
         "narrative.section": "Why this ranking?",
@@ -219,7 +220,7 @@ _STRINGS = {
         # Model cards
         "card.instructions_cloud": "Open **{name}** with the Link ↗ above, paste the identical prompt there, then paste its answer into this box.",
         "card.instructions_local": "Generated automatically on-device by QVAC MedPsy 4B — nothing ever leaves this computer.",
-        "card.tier_mismatch": "This answer was pasted while **{old}** was selected — **{new}** is selected now. Copy the new prompt, get a fresh answer, and re-paste it for a fair same-tier comparison.",
+        "card.tier_mismatch": "This QVAC answer was generated at **{old}** depth — **{new}** is selected now. Run the benchmark again to regenerate it at the new depth.",
         "card.status_empty": "⏳ Awaiting paste",
         "card.status_filled": "✓ Pasted · {n} words",
         "card.view_full": "🔍 Read full response",
@@ -232,7 +233,7 @@ _STRINGS = {
         "card.steps_inline": "Open the link → paste the prompt → paste the answer below",
         # Compact layout: eyebrows + stepper
         "eyebrow.case": "Clinical case",
-        "eyebrow.tier": "Analysis depth & run",
+        "eyebrow.tier": "QVAC depth & run",
         "eyebrow.output": "Model responses",
         "eyebrow.results": "Results",
         "stepper.case": "Case",
@@ -247,7 +248,7 @@ _STRINGS = {
         "kpi.privacy_avg": "🔒 Avg. privacy score",
         "kpi.privacy_avg_help": "100% = fully on-device (QVAC). 0% = data sent to a cloud API for every cloud model in the mix.",
         "kpi.consensus_avg": "🤝 Avg. inter-model agreement",
-        "kpi.consensus_avg_help": "Blend of Reliability (shared wording), Accuracy (match with consensus keywords) and Semantic similarity (meaning-level match via a local embedding model, so paraphrasing isn't punished). This is an **agreement** score, not a correctness score — see below.",
+        "kpi.consensus_avg_help": "Blend of Reliability (whole differential-list overlap with every other model), Accuracy (top-diagnosis-only overlap with every other model) and Semantic similarity (meaning-level match via a local embedding model, so paraphrasing isn't punished). This is an **agreement** score, not a correctness score — see below.",
         "kpi.semantic_unavailable": "ℹ️ Semantic similarity (the meaning-level KPI) needs the local embedding model — start it with the setup script to unlock this third signal; scores above use only Reliability + Accuracy in the meantime.",
         "kpi.glance_title": "📊 Full KPI breakdown — always visible, no clicks needed",
         "kpi.glance_caption": "The exact numbers behind the ranking above: how much each model agrees with the group (table + bar chart) and how much of the case stayed on-device (privacy gauges). Click any KPI tile above for a plain-language reminder of what it measures.",
@@ -259,7 +260,7 @@ _STRINGS = {
         "explain.reliability_label": "① Reliability — pairwise agreement",
         "explain.reliability_desc": "Average overlap between this model's differential diagnosis and each other model's, blending list-level overlap (65%) with whole-text keyword overlap (35%).",
         "explain.accuracy_label": "② Accuracy (consensus) — keyword match",
-        "explain.accuracy_desc": "Overlap between this model's primary-diagnosis keywords and the keywords that reached majority support across all models on this case.",
+        "explain.accuracy_desc": "Average keyword overlap between this model's primary (top) diagnosis and each other model's primary diagnosis — same idea as Reliability, but focused only on the single top pick instead of the whole differential list.",
         "explain.semantic_label": "③ Semantic similarity — meaning match",
         "explain.semantic_desc": "Cosine similarity between this model's primary diagnosis and each other model's, computed by a local embedding model (all-minilm) — this is what catches \"same diagnosis, different words\".",
         "explain.semantic_unavailable_note": "Not available this round (local embedding model unreachable) — Final score used a 50/50 blend of Reliability + Accuracy instead of the 30/30/40 blend.",
@@ -268,7 +269,7 @@ _STRINGS = {
         "explain.grade_label": "Clinical grade",
         "explain.grade_rubric": "Rescaled 0-100% clinical score → familiar 1-10 grade: **1** = unrelated to the reference · **5** ≈ partially right (same category, different specific diagnosis) · **10** = matches the reference almost exactly in wording and meaning, with the full differential covered.",
         "explain.formula_label": "Formula",
-        "explain.formula_consensus_3": "{score} = 30%×{rel} (reliability) + 30%×{acc} (accuracy) + 40%×{sem} (semantic)",
+        "explain.formula_consensus_3": "{score} = 35%×{rel} (reliability) + 35%×{acc} (accuracy) + 30%×{sem} (semantic)",
         "explain.formula_consensus_2": "{score} = 50%×{rel} (reliability) + 50%×{acc} (accuracy) — semantic unavailable this round",
         "explain.formula_final_gold": "Final {final} = average of Agreement {cons} and Clinical {gold}",
         "explain.own_keywords": "This model's primary-diagnosis keywords",
@@ -327,7 +328,7 @@ _STRINGS = {
         "page_title": "QVAC vs Cloud LLMs - Health Test",
         "lang_label": "Lingua",
         "title": "QVAC vs Cloud LLMs - Health Test",
-        "subtitle": "Stesso prompt · Tier scelto · Cloud manuali · QVAC locale · Confronto diagnosi",
+        "subtitle": "Prompt identico per tutti · Profondità scelta solo per QVAC · Cloud manuali · Confronto diagnosi",
         "sidebar.reset": "Reset",
         "sidebar.reset_help": "Azzera tutto incluso wallet a 0 USDT",
         "sidebar.wallet": "Wallet",
@@ -339,14 +340,15 @@ _STRINGS = {
         "sidebar.vlm_extract": "Estrai testo",
         "sidebar.vlm_add": "Aggiungi al caso",
         "case.clinical": "Caso clinico",
-        "tier.section": "Livello di analisi richiesta",
-        "tier.radio": "Tier — uguale per ChatGPT, Claude e Gemini",
-        "prompt.expander": "Prompt identico per tutti i modelli",
+        "tier.section": "Profondità di analisi di QVAC",
+        "tier.radio": "Profondità QVAC on-device — non modifica il prompt cloud",
+        "tier.qvac_only_tag": "solo QVAC, non i modelli cloud",
+        "prompt.expander": "Prompt identico per tutti i modelli (nessun tier — sempre uguale)",
         "prompt.copy": "Copia prompt negli appunti",
         "prompt.copied": "Prompt copiato. Incollalo manualmente sui siti cloud.",
         "browser.open": "Apri ChatGPT, Claude e Gemini nel browser",
         "browser.help": "Apre 3 tab. Il prompt va copiato e incollato manualmente su ogni sito.",
-        "caption.cloud": "I siti cloud non possono essere incorporati nella dashboard (sicurezza). Incolla le risposte sotto. QVAC MedPsy genera la diagnosi in locale.",
+        "caption.cloud": "I siti cloud non possono essere incorporati nella dashboard (sicurezza). Incolla le risposte sotto. Il selettore di profondità cambia solo il ragionamento di QVAC MedPsy in locale — ChatGPT, Claude e Gemini ricevono sempre lo stesso identico prompt, così il confronto resta corretto.",
         "benchmark.run": "Esegui benchmark",
         "benchmark.spinner": "Inferenza QVAC locale in corso...",
         "browser.opened": "Aperti",
@@ -381,9 +383,9 @@ _STRINGS = {
         "ranking.section": "Classifica e punteggio",
         "ranking.legend": (
             "**Affidabilità** = quanto le diagnosi di un modello coincidono (a parole) con quelle di tutti gli altri su questo caso · "
-            "**Accuratezza (consenso)** = quanto la sua diagnosi principale coincide con le keyword usate dalla maggioranza degli altri modelli · "
+            "**Accuratezza (consenso)** = quanto la sua sola diagnosi principale coincide con la diagnosi principale di ogni altro modello (stessa logica dell'Affidabilità, ma solo sulla prima ipotesi) · "
             "**Similarità semantica** = quanto la sua diagnosi si avvicina *nel significato* alle altre, misurata con un piccolo modello di embedding locale — è ciò che cattura due modelli che concordano nella sostanza ma con parole diverse · "
-            "**Punteggio finale** = una media pesata delle tre (30/30/40%, oppure combinata con l'accuratezza clinica vs. il tuo riferimento se inserito), cosi' dire la stessa cosa con parole diverse non viene penalizzato come un vero disaccordo · "
+            "**Punteggio finale** = una media pesata delle tre (35/35/30%, oppure combinata con l'accuratezza clinica vs. il tuo riferimento se inserito), cosi' dire la stessa cosa con parole diverse non viene penalizzato come un vero disaccordo · "
             "**Privacy** = 100% on-device (QVAC) vs. 0% cloud."
         ),
         "narrative.section": "Perché questa classifica?",
@@ -536,7 +538,7 @@ _STRINGS = {
         # Model cards
         "card.instructions_cloud": "Apri **{name}** dal Link ↗ qui sopra, incolla lì lo stesso prompt, poi incolla qui la sua risposta.",
         "card.instructions_local": "Generato automaticamente in locale da QVAC MedPsy 4B — nessun dato lascia questo computer.",
-        "card.tier_mismatch": "Questa risposta è stata incollata quando era selezionato **{old}** — ora è selezionato **{new}**. Copia il nuovo prompt, ottieni una risposta nuova e incollala di nuovo per un confronto corretto a parità di tier.",
+        "card.tier_mismatch": "Questa risposta di QVAC è stata generata a profondità **{old}** — ora è selezionata **{new}**. Esegui di nuovo il benchmark per rigenerarla alla nuova profondità.",
         "card.status_empty": "⏳ In attesa di incolla",
         "card.status_filled": "✓ Incollato · {n} parole",
         "card.view_full": "🔍 Leggi risposta completa",
@@ -549,7 +551,7 @@ _STRINGS = {
         "card.steps_inline": "Apri il link → incolla il prompt → incolla qui la risposta",
         # Compact layout: eyebrows + stepper
         "eyebrow.case": "Caso clinico",
-        "eyebrow.tier": "Profondità & esecuzione",
+        "eyebrow.tier": "Profondità QVAC & esecuzione",
         "eyebrow.output": "Risposte dei modelli",
         "eyebrow.results": "Risultati",
         "stepper.case": "Caso",
@@ -564,7 +566,7 @@ _STRINGS = {
         "kpi.privacy_avg": "🔒 Punteggio privacy medio",
         "kpi.privacy_avg_help": "100% = totalmente on-device (QVAC). 0% = dati inviati a un'API cloud per ogni modello cloud presente.",
         "kpi.consensus_avg": "🤝 Accordo medio tra modelli",
-        "kpi.consensus_avg_help": "Media pesata tra Affidabilità (parole condivise), Accuratezza (coincidenza con le keyword di consenso) e Similarità semantica (coincidenza di significato via embedding locale, cosi' le parafrasi non vengono penalizzate). È un punteggio di **accordo**, non di correttezza — vedi sotto.",
+        "kpi.consensus_avg_help": "Media pesata tra Affidabilità (sovrapposizione con l'intera lista differenziale di ogni altro modello), Accuratezza (sovrapposizione della sola diagnosi principale con ogni altro modello) e Similarità semantica (coincidenza di significato via embedding locale, cosi' le parafrasi non vengono penalizzate). È un punteggio di **accordo**, non di correttezza — vedi sotto.",
         "kpi.semantic_unavailable": "ℹ️ La similarità semantica (il KPI di significato) richiede il modello di embedding locale — avvialo con lo script di setup per abilitare questo terzo segnale; nel frattempo i punteggi sopra usano solo Affidabilità + Accuratezza.",
         "kpi.glance_title": "📊 Dettaglio KPI completo — sempre visibile, senza click",
         "kpi.glance_caption": "I numeri esatti dietro alla classifica sopra: quanto ogni modello è d'accordo col gruppo (tabella + grafico a barre) e quanto del caso è rimasto on-device (gauge privacy). Clicca una delle card KPI sopra per un richiamo veloce di cosa misura.",
@@ -576,7 +578,7 @@ _STRINGS = {
         "explain.reliability_label": "① Affidabilità — accordo a coppie",
         "explain.reliability_desc": "Media della sovrapposizione tra la diagnosi differenziale di questo modello e quella di ogni altro modello, mescolando la sovrapposizione a livello di lista (65%) con quella per keyword su tutto il testo (35%).",
         "explain.accuracy_label": "② Accuratezza (consenso) — coincidenza keyword",
-        "explain.accuracy_desc": "Sovrapposizione tra le keyword della diagnosi principale di questo modello e le keyword che hanno ottenuto il supporto della maggioranza tra tutti i modelli su questo caso.",
+        "explain.accuracy_desc": "Sovrapposizione media di keyword tra la diagnosi principale (la prima) di questo modello e la diagnosi principale di ogni altro modello — stessa logica dell'Affidabilità, ma limitata alla sola prima ipotesi invece che a tutta la lista differenziale.",
         "explain.semantic_label": "③ Similarità semantica — coincidenza di significato",
         "explain.semantic_desc": "Similarità coseno tra la diagnosi principale di questo modello e quella di ogni altro modello, calcolata da un modello di embedding locale (all-minilm) — è ciò che cattura \"stessa diagnosi, parole diverse\".",
         "explain.semantic_unavailable_note": "Non disponibile in questo round (modello di embedding locale non raggiungibile) — il punteggio finale ha usato una media 50/50 di Affidabilità + Accuratezza invece della media 30/30/40.",
@@ -585,7 +587,7 @@ _STRINGS = {
         "explain.grade_label": "Voto clinico",
         "explain.grade_rubric": "Punteggio clinico 0-100% riscalato in un voto familiare da 1 a 10: **1** = non correlato al riferimento · **5** ≈ parzialmente corretto (stessa categoria, diagnosi specifica diversa) · **10** = coincide col riferimento quasi esattamente nelle parole e nel significato, con diagnosi differenziale completa.",
         "explain.formula_label": "Formula",
-        "explain.formula_consensus_3": "{score} = 30%×{rel} (affidabilità) + 30%×{acc} (accuratezza) + 40%×{sem} (semantica)",
+        "explain.formula_consensus_3": "{score} = 35%×{rel} (affidabilità) + 35%×{acc} (accuratezza) + 30%×{sem} (semantica)",
         "explain.formula_consensus_2": "{score} = 50%×{rel} (affidabilità) + 50%×{acc} (accuratezza) — semantica non disponibile in questo round",
         "explain.formula_final_gold": "Finale {final} = media di Accordo {cons} e Clinico {gold}",
         "explain.own_keywords": "Keyword della diagnosi principale di questo modello",

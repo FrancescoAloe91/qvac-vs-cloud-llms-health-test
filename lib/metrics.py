@@ -38,14 +38,18 @@ def clinical_grade_10(score_pct: float) -> float:
     return round(max(1.0, min(10.0, 1.0 + (score_pct / 100.0) * 9.0)), 1)
 
 
-def _blend_score(a: float, b: float, sem, weights=(0.3, 0.3, 0.4)) -> float:
+def _blend_score(a: float, b: float, sem, weights=(0.35, 0.35, 0.3)) -> float:
     """Blend two keyword-based metrics with an optional semantic metric.
 
-    When the local embedding model is reachable, semantic similarity gets
-    the *largest* weight on purpose: it is the signal that tells apart a
-    genuinely different diagnosis from the same diagnosis phrased with
-    different words, which is exactly the gap plain keyword-overlap can't
-    see. Falls back to a plain 50/50 average when embeddings are missing.
+    Semantic similarity adds real value (it catches "same diagnosis,
+    different words" that pure keyword-overlap misses) but it is also the
+    single noisiest signal here: it is computed from one short extracted
+    snippet through a small local embedding model, so it is given a
+    supporting weight rather than the deciding one — a single
+    mis-extracted snippet should nudge the score, not single-handedly
+    collapse it while the two more robust, multi-item signals (reliability
+    and accuracy, both averaged over the *whole* differential) disagree.
+    Falls back to a plain 50/50 average when embeddings are missing.
     """
     if sem is None:
         return round((a + b) / 2, 1)
@@ -101,7 +105,9 @@ def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> p
             rows.append(
                 {
                     L["model"]: cfg["name"],
-                    L["tier_req"]: tier_label,
+                    # No tier concept applies to cloud sites — the depth
+                    # selector only ever changes QVAC's own prompt.
+                    L["tier_req"]: "—",
                     "TTFT (s)": "—",
                     "TPS": "—",
                     L["latency"]: "—",
@@ -114,7 +120,8 @@ def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> p
             rows.append(
                 {
                     L["model"]: cfg["name"],
-                    L["tier_req"]: L["local"],
+                    # QVAC is the only model the depth selector actually drives.
+                    L["tier_req"]: f"{tier_label} ({L['local']})",
                     # Cast to str: this column also holds "—" for cloud rows, and a
                     # mixed float/str object column breaks pandas->Arrow serialization.
                     "TTFT (s)": str(stats.get("ttft_s") or "—"),
@@ -144,7 +151,9 @@ def build_consensus_table(compare: dict, tier_key: str, model_keys: list, lang: 
         score = _blend_score(rel, acc, sem)
         row = {
             L["model"]: cfg["name"],
-            L["tier"]: tier_label if cfg["cloud"] else L["local"],
+            # The depth selector only drives QVAC; cloud sites get one
+            # untiered prompt no matter what, so "Tier" doesn't apply to them.
+            L["tier"]: f"{tier_label} ({L['local']})" if not cfg["cloud"] else "—",
             L["reliability"]: rel,
             L["acc_consensus"]: acc,
         }
@@ -180,7 +189,7 @@ def build_gold_table(compare: dict, tier_key: str, model_keys: list, lang: str =
         score = _blend_score(acc_p, cov, sem, weights=(0.35, 0.35, 0.3))
         row = {
             L["model"]: cfg["name"],
-            L["tier"]: tier_label if cfg["cloud"] else L["local"],
+            L["tier"]: f"{tier_label} ({L['local']})" if not cfg["cloud"] else "—",
             L["acc_primary"]: acc_p,
             L["ddx_cov"]: cov,
         }
@@ -423,6 +432,7 @@ def build_score_explanations(
     """
     names = {k: MODEL_CONFIG[k]["name"] for k in model_keys if k in MODEL_CONFIG}
     rel_pairs = compare.get("reliability_pairs", {})
+    acc_pairs = compare.get("accuracy_pairs", {})
     sem_pairs = compare.get("semantic_pairs", {})
     sem_available = compare.get("semantic_available", False)
     gold = compare.get("gold") if use_gold else None
@@ -440,6 +450,10 @@ def build_score_explanations(
         rel_detail = [
             {"other": names.get(j, j), "value": v}
             for j, v in (rel_pairs.get(key, {}) or {}).items()
+        ]
+        acc_detail = [
+            {"other": names.get(j, j), "value": v}
+            for j, v in (acc_pairs.get(key, {}) or {}).items()
         ]
         sem_detail = [
             {"other": names.get(j, j), "value": v}
@@ -460,6 +474,7 @@ def build_score_explanations(
             "reliability": {"value": rel, "pairs": rel_detail},
             "accuracy_consensus": {
                 "value": acc,
+                "pairs": acc_detail,
                 "own_keywords": own_primary_kw[:10],
                 "consensus_keywords": consensus_kw[:10],
                 "matched_keywords": matched_kw,

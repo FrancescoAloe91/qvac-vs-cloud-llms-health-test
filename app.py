@@ -183,13 +183,22 @@ def explain_scores_dialog(explanations: list, use_gold: bool):
             st.caption(t("explain.accuracy_desc", lang))
             acc = e["accuracy_consensus"]
             st.metric(t("cols.accuracy_consensus_short", lang), f"{acc['value']}%")
-            kwc1, kwc2 = st.columns(2)
-            with kwc1:
-                st.caption(t("explain.own_keywords", lang))
-                st.write(", ".join(acc["own_keywords"]) or t("explain.no_keywords", lang))
-            with kwc2:
-                st.caption(t("explain.matched_keywords", lang))
-                st.write(", ".join(acc["matched_keywords"]) or t("explain.no_keywords", lang))
+            if acc["pairs"]:
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                t("explain.select_model", lang): t("explain.vs", lang, name=p["other"]),
+                                t("cols.accuracy_consensus_short", lang): f"{p['value']}%",
+                            }
+                            for p in acc["pairs"]
+                        ]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            st.caption(t("explain.own_keywords", lang))
+            st.write(", ".join(acc["own_keywords"]) or t("explain.no_keywords", lang))
 
             st.markdown(f"**{t('explain.semantic_label', lang)}**")
             st.caption(t("explain.semantic_desc", lang))
@@ -485,16 +494,20 @@ with ctrl3:
 st.session_state.selected_tier = tier_choice
 st.markdown(
     f'<div class="glass-panel fade-in"><span class="{TIER_BADGE[tier_choice]}">{TIERS[tier_choice].label}</span> '
-    f'<span style="color:#cbd5e1; font-size:0.8rem;">{tier_description(tier_choice, lang)}</span></div>',
+    f'<span style="color:#cbd5e1; font-size:0.8rem;">{tier_description(tier_choice, lang)}</span> '
+    f'<span style="color:#64748b; font-size:0.72rem; font-style:italic;">— {t("tier.qvac_only_tag", lang)}</span></div>',
     unsafe_allow_html=True,
 )
 
 tiered_prompt = build_tier_prompt(full_prompt, tier_choice, lang)
 
+# The tier/depth selector is a QVAC-only knob (see caption below): the text
+# copied for the cloud sites is always the plain, untiered prompt, identical
+# no matter which depth is selected — that is what keeps the comparison fair.
 with st.expander(t("prompt.expander", lang), expanded=False):
-    st.code(tiered_prompt, language="text")
+    st.code(full_prompt, language="text")
     if st.button("📋 " + t("prompt.copy", lang)):
-        if copy_to_clipboard(tiered_prompt):
+        if copy_to_clipboard(full_prompt):
             st.success(t("prompt.copied", lang))
 
 st.caption(t("caption.cloud", lang))
@@ -600,24 +613,26 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
 
         current_text = st.session_state.get(wk, "").strip()
 
-        # Cloud boxes are filled by hand from an external chat, so the app
-        # has no way to *know* which tier's prompt actually produced that
-        # text — it can only record which tier was selected the moment this
-        # box's content last changed, and flag it if the selector has since
-        # moved on. This keeps the tier badge honest instead of always
-        # showing the current selector value as if it were guaranteed.
-        if current_text:
-            if st.session_state.output_tier_text_cache.get(key) != current_text:
-                st.session_state.output_tier[key] = tier_choice
-                st.session_state.output_tier_text_cache[key] = current_text
+        # The depth selector is a QVAC-only knob (cloud sites always get the
+        # same plain prompt — see caption above), so only QVAC's card needs a
+        # depth badge, tracked against what actually produced its current
+        # text. Cloud cards show no tier badge at all: showing one there would
+        # imply the selector changed their prompt, which it never does.
+        tier_mismatch = False
+        if cfg["cloud"]:
+            badge_html = ""
         else:
-            st.session_state.output_tier.pop(key, None)
-            st.session_state.output_tier_text_cache.pop(key, None)
+            if current_text:
+                if st.session_state.output_tier_text_cache.get(key) != current_text:
+                    st.session_state.output_tier[key] = tier_choice
+                    st.session_state.output_tier_text_cache[key] = current_text
+            else:
+                st.session_state.output_tier.pop(key, None)
+                st.session_state.output_tier_text_cache.pop(key, None)
 
-        recorded_tier = st.session_state.output_tier.get(key, tier_choice)
-        tier_mismatch = bool(current_text) and recorded_tier != tier_choice
-        tier_lbl = TIERS[recorded_tier].label if cfg["cloud"] else _L(lang)["local"]
-        badge = TIER_BADGE.get(recorded_tier, "tier-local") if cfg["cloud"] else "tier-local"
+            recorded_tier = st.session_state.output_tier.get(key, tier_choice)
+            tier_mismatch = bool(current_text) and recorded_tier != tier_choice
+            badge_html = f'<span class="{TIER_BADGE.get(recorded_tier, "tier-local")}">{TIERS[recorded_tier].label}</span>'
 
         word_count = len(current_text.split()) if current_text else 0
         status_html = (
@@ -636,7 +651,7 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
             f'<div class="model-card fade-in" style="--model-color:{cfg["color"]};">'
             f'<div class="model-card-head">'
             f'<span class="model-card-name"><span class="m-icon">{cfg["icon"]}</span>{cfg["name"]} '
-            f'<span class="{badge}">{tier_lbl}</span>{link_html}</span>{status_html}</div>'
+            f'{badge_html}{link_html}</span>{status_html}</div>'
             f'<div class="model-vendor">{cfg["vendor"]}</div>'
             f'<div class="model-instructions">'
             f'{t("card.instructions_cloud", lang, name=cfg["name"]) if cfg["cloud"] else t("card.instructions_local", lang)}'
