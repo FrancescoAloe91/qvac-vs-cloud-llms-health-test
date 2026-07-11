@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/wallet.json
+.streamlit/secrets.toml
+.env
+
+# Local MedPsy inference engine (downloaded by scripts/setup_medpsy.sh, not committed)
+.ollama-bin/
+.ollama-models/
+models/*.gguf
+models/.cache/
+
+# Local tooling (GitHub CLI binary etc.), not part of the project
+.local-bin/

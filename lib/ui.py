@@ -1,0 +1,457 @@
+"""Shared visual layer: global CSS theme + small HTML rendering helpers.
+
+Keeping this in one place lets app.py stay focused on flow/logic while the
+look & feel (glassmorphism, gradients, animations, score badges, KPI tiles)
+is defined and reused consistently everywhere.
+"""
+
+import html
+import re
+
+import streamlit as st
+
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+
+:root {
+    --bg-0: #070a12;
+    --bg-1: #0b0f1a;
+    --panel: rgba(22, 27, 41, 0.72);
+    --panel-solid: #131826;
+    --border: rgba(148, 163, 184, 0.16);
+    --border-strong: rgba(148, 163, 184, 0.3);
+    --accent: #00d09c;
+    --accent-2: #3b82f6;
+    --accent-3: #a855f7;
+    --text: #eef2f8;
+    --text-dim: #94a3b8;
+    --radius: 16px;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+h1, h2, h3, h4 { font-family: 'Sora', 'Inter', sans-serif !important; letter-spacing: -0.01em; }
+
+/* ---------- animated backdrop ---------- */
+.stApp {
+    background: radial-gradient(circle at 15% 0%, rgba(0,208,156,0.10), transparent 45%),
+                radial-gradient(circle at 85% 8%, rgba(59,130,246,0.10), transparent 45%),
+                radial-gradient(circle at 50% 100%, rgba(168,85,247,0.07), transparent 55%),
+                linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 55%, #0a0d16 100%);
+    background-attachment: fixed;
+}
+.stApp::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.035) 50%, transparent 51%),
+        radial-gradient(1px 1px at 70% 65%, rgba(255,255,255,0.03) 50%, transparent 51%);
+    background-size: 340px 340px, 260px 260px;
+    opacity: 0.6;
+}
+
+.block-container { padding-top: 0.6rem; padding-bottom: 2rem; max-width: 1480px; }
+
+/* tighten Streamlit's own flex-gap between stacked elements everywhere */
+[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
+[data-testid="stHorizontalBlock"] { gap: 0.6rem !important; align-items: stretch; }
+div.element-container { margin-bottom: 0 !important; }
+[data-testid="stExpander"] details summary { padding: 0.35rem 0.75rem !important; }
+[data-testid="stExpander"] .streamlit-expanderContent { padding-top: 0.4rem !important; }
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes glowPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,208,156,0.35); } 50% { box-shadow: 0 0 0 7px rgba(0,208,156,0); } }
+@keyframes shimmer { 0% { background-position: -300px 0; } 100% { background-position: 300px 0; } }
+@keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes stepGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(0,208,156,0.45); } 50% { box-shadow: 0 0 0 6px rgba(0,208,156,0); } }
+@keyframes lineGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes rewardPop { 0% { transform: scale(0.55); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes coinSpin { 0% { transform: rotateY(0deg) scale(0.4); opacity: 0; } 60% { opacity: 1; } 100% { transform: rotateY(360deg) scale(1); opacity: 1; } }
+@keyframes rewardRing { 0% { box-shadow: 0 0 0 0 rgba(0,208,156,0.45); } 100% { box-shadow: 0 0 0 18px rgba(0,208,156,0); } }
+
+.fade-in { animation: fadeInUp 0.45s cubic-bezier(.22,1,.36,1) both; }
+.fade-in.d1 { animation-delay: .04s; } .fade-in.d2 { animation-delay: .08s; }
+.fade-in.d3 { animation-delay: .12s; } .fade-in.d4 { animation-delay: .16s; }
+.fade-in.d5 { animation-delay: .20s; }
+
+/* ---------- headline (compact) ---------- */
+.app-title {
+    font-size: 1.55rem; font-weight: 800; margin: 0; padding: 0; line-height: 1.2;
+    background: linear-gradient(100deg, #00d09c 0%, #3b82f6 45%, #a855f7 90%);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: gradientShift 10s ease infinite;
+    display: flex; align-items: center; gap: 8px;
+}
+.app-subtitle { color: var(--text-dim); font-size: 0.78rem; margin: 0.1rem 0 0.35rem; }
+.live-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(0,208,156,0.12); border: 1px solid rgba(0,208,156,0.35);
+    color: #6ee7c8; font-size: 0.66rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 999px; letter-spacing: 0.02em;
+    transition: transform 0.25s cubic-bezier(.22,1,.36,1);
+}
+.live-chip:hover { transform: translateY(-1px); }
+.live-dot { width: 5px; height: 5px; border-radius: 50%; background: #00d09c; animation: glowPulse 1.8s infinite; }
+
+/* ---------- compact eyebrow (replaces bulky numbered section headers) ---------- */
+.eyebrow {
+    display: flex; align-items: center; gap: 6px; margin: 0.5rem 0 0.35rem;
+    font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-dim);
+}
+.eyebrow .eyebrow-icon { font-size: 0.78rem; opacity: 0.9; }
+.eyebrow::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border-strong), transparent); }
+
+/* ---------- progress stepper ---------- */
+.stepper { display: flex; align-items: center; margin: 0.15rem 0 0.7rem; }
+.stepper .step { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.stepper .node {
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.62rem; font-weight: 800; color: var(--text-dim);
+    background: rgba(148,163,184,0.12); border: 1px solid var(--border-strong);
+    transition: all 0.35s cubic-bezier(.22,1,.36,1);
+}
+.stepper .step.done .node { background: var(--accent); border-color: var(--accent); color: #04231a; }
+.stepper .step.current .node { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; color: #04231a; animation: stepGlow 2s infinite; }
+.stepper .label { font-size: 0.68rem; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+.stepper .step.done .label, .stepper .step.current .label { color: var(--text); }
+.stepper .connector { flex: 1; height: 2px; background: var(--border); margin: 0 8px; border-radius: 2px; position: relative; overflow: hidden; min-width: 16px; }
+.stepper .connector.filled::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform-origin: left; animation: lineGrow 0.5s cubic-bezier(.22,1,.36,1) both; }
+
+/* ---------- generic glass panel ---------- */
+.glass-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.85rem;
+    backdrop-filter: blur(6px);
+    transition: border-color 0.3s cubic-bezier(.22,1,.36,1), transform 0.3s cubic-bezier(.22,1,.36,1), box-shadow 0.3s cubic-bezier(.22,1,.36,1);
+}
+.glass-panel:hover { border-color: var(--border-strong); }
+
+/* ---------- compact case picker ---------- */
+.case-info-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: linear-gradient(150deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01));
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--case-color, var(--accent));
+    border-radius: 12px;
+    padding: 0.5rem 0.8rem;
+    transition: border-color 0.3s cubic-bezier(.22,1,.36,1);
+}
+.case-info-icon {
+    font-size: 1rem; line-height: 1; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--case-color, var(--accent)) 18%, transparent);
+}
+.case-specialty {
+    display: inline-block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+    color: var(--case-color, var(--accent)); background: color-mix(in srgb, var(--case-color, var(--accent)) 16%, transparent);
+    padding: 2px 7px; border-radius: 999px;
+}
+.case-info-focus { font-size: 0.76rem; color: #cbd5e1; flex: 1; min-width: 200px; }
+.case-info-title { font-weight: 700; font-size: 0.82rem; color: var(--text); }
+
+/* ---------- model output cards (compact) ---------- */
+.model-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--model-color, var(--accent));
+    border-radius: 12px;
+    padding: 0.55rem 0.75rem 0.4rem;
+    margin-bottom: 0.25rem;
+    backdrop-filter: blur(6px);
+    transition: border-color 0.3s cubic-bezier(.22,1,.36,1);
+}
+.model-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.model-card-name { font-weight: 800; font-size: 0.88rem; color: var(--text); display: flex; align-items: center; gap: 5px; }
+.model-card-name .m-icon {
+    font-size: 0.8rem; width: 22px; height: 22px; border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--model-color, var(--accent)) 16%, transparent);
+    flex-shrink: 0;
+}
+.card-link-pill {
+    font-size: 0.62rem; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+    background: rgba(148,163,184,0.12); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.3);
+    text-decoration: none; flex-shrink: 0; transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.card-link-pill:hover { background: color-mix(in srgb, var(--model-color, var(--accent)) 22%, transparent); color: var(--text); border-color: var(--model-color, var(--accent)); }
+.model-vendor { color: var(--text-dim); font-size: 0.64rem; font-weight: 500; }
+.model-instructions { font-size: 0.7rem; color: #cbd5e1; margin: 0.25rem 0 0.15rem; line-height: 1.3; }
+
+.status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 0.62rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; flex-shrink: 0; }
+.status-empty { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+.status-filled { background: rgba(0,208,156,0.14); color: #5eead4; border: 1px solid rgba(0,208,156,0.35); }
+
+/* ---------- ranking narrative cards ---------- */
+.narrative-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--model-color, var(--accent));
+    border-radius: 12px;
+    padding: 0.65rem 0.9rem;
+    margin-bottom: 0.45rem;
+    backdrop-filter: blur(6px);
+    transition: transform 0.25s cubic-bezier(.22,1,.36,1), border-color 0.25s;
+}
+.narrative-card:hover { transform: translateX(2px); }
+.narrative-card.tone-strength { background: linear-gradient(90deg, rgba(0,208,156,0.08), transparent 45%), var(--panel); }
+.narrative-card.tone-watch { background: linear-gradient(90deg, rgba(245,158,11,0.07), transparent 45%), var(--panel); }
+.narrative-head { display: flex; align-items: center; gap: 8px; margin-bottom: 0.3rem; flex-wrap: wrap; }
+.narrative-rank { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+.narrative-name { font-weight: 800; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 5px; flex: 1; }
+.narrative-name .m-icon {
+    font-size: 0.78rem; width: 20px; height: 20px; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--model-color, var(--accent)) 16%, transparent);
+    flex-shrink: 0;
+}
+.narrative-bullets { margin: 0; padding-left: 1.05rem; font-size: 0.75rem; color: #cbd5e1; line-height: 1.5; }
+.narrative-bullets li { margin-bottom: 0.12rem; }
+.narrative-bullets strong { color: var(--text); }
+
+/* ---------- tier / model badges ---------- */
+.tier-light  { background:rgba(107,114,128,0.22); color:#cbd5e1; padding:2px 8px; border:1px solid rgba(148,163,184,0.35); border-radius:999px; font-size:0.62rem; font-weight:700; }
+.tier-medium { background:rgba(59,130,246,0.18); color:#93c5fd; padding:2px 8px; border:1px solid rgba(59,130,246,0.4); border-radius:999px; font-size:0.62rem; font-weight:700; }
+.tier-premium{ background:rgba(245,197,24,0.16); color:#fde68a; padding:2px 8px; border:1px solid rgba(245,197,24,0.4); border-radius:999px; font-size:0.62rem; font-weight:700; }
+.tier-local  { background:rgba(0,208,156,0.16); color:#5eead4; padding:2px 8px; border:1px solid rgba(0,208,156,0.4); border-radius:999px; font-size:0.62rem; font-weight:700; }
+
+/* ---------- KPI command-center tiles (compact) ---------- */
+.kpi-tile {
+    background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.55rem 0.75rem;
+    height: 100%;
+    transition: transform 0.3s cubic-bezier(.22,1,.36,1), border-color 0.3s cubic-bezier(.22,1,.36,1), box-shadow 0.3s cubic-bezier(.22,1,.36,1);
+}
+.kpi-tile:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: 0 10px 22px -12px rgba(0,0,0,0.5); }
+.kpi-label { font-size: 0.64rem; color: var(--text-dim); font-weight: 700; margin-bottom: 0.15rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.kpi-value { font-size: 1.28rem; font-weight: 800; color: var(--text); line-height: 1.1; }
+.kpi-sub { font-size: 0.64rem; color: var(--text-dim); margin-top: 0.15rem; }
+.kpi-value.accent { color: var(--accent); }
+
+/* ---------- score badge + bar ---------- */
+.score-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 0.85rem;
+    padding: 2px 4px;
+}
+.score-bar-wrap { width: 100%; height: 6px; border-radius: 999px; background: rgba(148,163,184,0.14); overflow: hidden; margin-top: 4px; }
+.score-bar-fill { height: 100%; border-radius: 999px; background-size: 300px 100%; animation: shimmer 2.4s linear infinite; transition: width 0.5s cubic-bezier(.22,1,.36,1); }
+
+/* ---------- misc widget polish ---------- */
+[data-testid="stMetric"] {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.35rem 0.6rem; backdrop-filter: blur(4px);
+    transition: transform 0.3s cubic-bezier(.22,1,.36,1);
+}
+[data-testid="stMetric"]:hover { transform: translateY(-2px); }
+[data-testid="stMetric"] label { font-size: 0.66rem !important; color: var(--text-dim) !important; }
+[data-testid="stMetricValue"] { font-size: 1.05rem !important; }
+
+div[data-testid="stExpander"] { border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.015); }
+div[data-testid="stTabs"] button[role="tab"] { font-weight: 600; font-size: 0.85rem; padding: 0.35rem 0.7rem; transition: color 0.25s ease; }
+div[data-testid="stVerticalBlockBorderWrapper"] { border-radius: 12px; }
+
+/* segmented control (case picker / tier picker) — compact pills */
+div[data-testid="stSegmentedControl"] button {
+    border-radius: 999px !important; font-size: 0.78rem !important;
+    transition: transform 0.22s cubic-bezier(.22,1,.36,1), background 0.22s ease, box-shadow 0.22s ease !important;
+}
+div[data-testid="stSegmentedControl"] button:hover { transform: translateY(-1px); }
+div[data-testid="stSegmentedControl"] button[aria-checked="true"] {
+    box-shadow: 0 4px 14px -6px rgba(0,208,156,0.55);
+    animation: fadeInUp 0.3s cubic-bezier(.22,1,.36,1) both;
+}
+
+.stButton > button, .stDownloadButton > button, .stLinkButton > a, .stPopover > button {
+    border-radius: 9px !important; transition: transform 0.22s cubic-bezier(.22,1,.36,1), box-shadow 0.22s cubic-bezier(.22,1,.36,1), border-color 0.22s ease !important;
+    font-size: 0.84rem !important;
+}
+.stButton > button:hover, .stLinkButton > a:hover, .stPopover > button:hover { transform: translateY(-1px); box-shadow: 0 6px 16px -8px rgba(0,0,0,0.5); }
+.stButton > button[kind="primary"] { animation: glowPulse 2.8s infinite; font-weight: 700 !important; }
+
+textarea, .stTextArea textarea { border-radius: 10px !important; font-size: 0.85rem !important; }
+
+hr { border-color: var(--border) !important; margin: 0.5rem 0 !important; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.25); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.4); }
+
+.footer-note { color: var(--text-dim); font-size: 0.68rem; text-align: center; margin-top: 1.2rem; opacity: 0.8; }
+
+/* ---------- closing "decision" section ---------- */
+.decision-lead { color: #cbd5e1; font-size: 0.86rem; margin: 0 0 0.6rem; line-height: 1.4; }
+.decision-caption { color: var(--text-dim); font-size: 0.68rem; margin: 0.25rem 0 0; line-height: 1.3; }
+
+/* ---------- reward / payment success animation ---------- */
+.reward-pop {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 0.75rem 1rem 0.9rem; text-align: center;
+    animation: rewardPop 0.5s cubic-bezier(.22,1.6,.36,1) both;
+}
+.reward-coin {
+    font-size: 2.1rem; width: 58px; height: 58px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,208,156,0.14); border: 1px solid rgba(0,208,156,0.4);
+    animation: coinSpin 0.7s ease-out both, rewardRing 1.4s ease-out 0.5s;
+    margin-bottom: 4px;
+}
+.reward-amount { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.reward-balance { font-size: 0.76rem; color: var(--text-dim); margin-top: 2px; }
+.reward-balance b { color: var(--text); font-weight: 700; }
+
+/* ---------- live local-inference stream (real tokens, not a fake typewriter) ---------- */
+.qvac-live-stream {
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.78rem; line-height: 1.5; color: #b7f7e4;
+    background: rgba(0,208,156,0.06); border: 1px solid rgba(0,208,156,0.28);
+    border-radius: 10px; padding: 0.65rem 0.8rem; max-height: 220px;
+    overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+}
+.qvac-live-stream::-webkit-scrollbar { width: 6px; }
+.qvac-live-meta {
+    font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;
+    display: flex; align-items: center; gap: 6px;
+}
+</style>
+"""
+
+
+def inject_css() -> None:
+    st.markdown(CSS, unsafe_allow_html=True)
+
+
+def score_color(value: float) -> str:
+    if value is None:
+        return "#64748b"
+    if value >= 75:
+        return "#00d09c"
+    if value >= 45:
+        return "#f5c518"
+    return "#ef4444"
+
+
+def score_badge_html(value: float, suffix: str = "%") -> str:
+    color = score_color(value)
+    return (
+        f'<span class="score-badge" style="color:{color};">'
+        f'<span class="score-bar-wrap" style="width:46px; display:inline-block; vertical-align:middle;">'
+        f'<span class="score-bar-fill" style="width:{min(max(value or 0, 0), 100):.0f}%; '
+        f'background:linear-gradient(90deg,{color}55,{color});"></span></span>'
+        f'{value:.0f}{suffix}</span>'
+    )
+
+
+def kpi_tile_html(label: str, value: str, sub: str = "", accent: bool = False, delay: int = 0) -> str:
+    cls = "kpi-value accent" if accent else "kpi-value"
+    sub_html = f'<div class="kpi-sub">{html.escape(sub)}</div>' if sub else ""
+    delay_cls = f" d{delay}" if delay else ""
+    return (
+        f'<div class="kpi-tile fade-in{delay_cls}">'
+        f'<div class="kpi-label">{html.escape(label)}</div>'
+        f'<div class="{cls}">{value}</div>'
+        f"{sub_html}</div>"
+    )
+
+
+def _md_bold(text: str) -> str:
+    """Escape text then convert simple **bold** markers to <strong> tags.
+
+    Escaping first neutralizes any stray angle brackets/quotes in the input
+    (defense in depth even though callers only pass our own template
+    strings), and only then are the literal ** markers turned into markup.
+    """
+    escaped = html.escape(text)
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+
+
+def narrative_card_html(
+    rank: int, icon: str, color: str, name: str, score: float, bullets: list, tone: str = "neutral"
+) -> str:
+    """Renders one model's auto-generated 'why this ranking' explanation card."""
+    medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"#{rank}")
+    bullets_html = "".join(f"<li>{_md_bold(b)}</li>" for b in bullets)
+    return (
+        f'<div class="narrative-card fade-in tone-{tone}" style="--model-color:{color};">'
+        f'<div class="narrative-head">'
+        f'<span class="narrative-rank">{medal}</span>'
+        f'<span class="narrative-name"><span class="m-icon">{icon}</span>{html.escape(name)}</span>'
+        f"{score_badge_html(score)}"
+        f"</div>"
+        f'<ul class="narrative-bullets">{bullets_html}</ul>'
+        f"</div>"
+    )
+
+
+def table_height(n_rows: int, row_px: int = 35, header_px: int = 38, pad_px: int = 3) -> int:
+    """Exact pixel height to show every row of a dataframe with no internal
+    scrollbar — used for the small (2-5 model) KPI tables where an inner
+    scroll arrow only hides data the user should see at a glance."""
+    return header_px + row_px * max(n_rows, 1) + pad_px
+
+
+def eyebrow_html(icon: str, title: str) -> str:
+    """Compact single-line section label — replaces the old bulky numbered header."""
+    return (
+        '<div class="eyebrow fade-in">'
+        f'<span class="eyebrow-icon">{icon}</span>{html.escape(title)}'
+        "</div>"
+    )
+
+
+def section_head_html(step: str, title: str, subtitle: str = "") -> str:
+    """Legacy alias kept for compatibility — now renders as a compact eyebrow."""
+    return eyebrow_html(str(step), title)
+
+
+def stepper_html(steps: list) -> str:
+    """steps: list of (label, state) where state in {'done','current','todo'}."""
+    parts = ['<div class="stepper fade-in">']
+    n = len(steps)
+    for i, (label, state) in enumerate(steps):
+        icon = "✓" if state == "done" else str(i + 1)
+        parts.append(
+            f'<div class="step {state}"><div class="node">{icon}</div>'
+            f'<span class="label">{html.escape(label)}</span></div>'
+        )
+        if i < n - 1:
+            filled = "filled" if state == "done" else ""
+            parts.append(f'<div class="connector {filled}"></div>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def case_info_bar_html(icon: str, color: str, specialty: str, title: str, focus_label: str, focus_text: str) -> str:
+    return (
+        f'<div class="case-info-bar fade-in" style="--case-color:{color};">'
+        f'<span class="case-info-icon">{icon}</span>'
+        f'<span class="case-specialty">{html.escape(specialty)}</span>'
+        f'<span class="case-info-title">{html.escape(title)}</span>'
+        f'<span class="case-info-focus">🎯 {html.escape(focus_label)}: {html.escape(focus_text)}</span>'
+        "</div>"
+    )
+
+
+def reward_success_html(amount_text: str, balance_label: str, balance_text: str) -> str:
+    return (
+        '<div class="reward-pop">'
+        '<div class="reward-coin">💠</div>'
+        f'<div class="reward-amount">+{html.escape(amount_text)}</div>'
+        f'<div class="reward-balance">{html.escape(balance_label)}: <b>{html.escape(balance_text)}</b></div>'
+        "</div>"
+    )
+
+
+def live_chip_html(text: str) -> str:
+    return f'<span class="live-chip"><span class="live-dot"></span>{html.escape(text)}</span>'
