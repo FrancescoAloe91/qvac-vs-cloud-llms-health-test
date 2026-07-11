@@ -542,10 +542,9 @@ if run_benchmark:
         set_output_widget("qvac", content)
         st.session_state.user_outputs["qvac"] = content
         st.session_state.qvac_thinking = qvac.get("thinking", "")
-        for key in ALL_KEYS:
-            if key != "qvac":
-                set_output_widget(key, "")
-                st.session_state.user_outputs[key] = ""
+        # Deliberately do NOT touch chatgpt/claude/gemini here: running (or
+        # re-running) QVAC must never erase what the user already pasted from
+        # the cloud sites for this same clinical case.
 
 if st.session_state.browser_info:
     info = st.session_state.browser_info
