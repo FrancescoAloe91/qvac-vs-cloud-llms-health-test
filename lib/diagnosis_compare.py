@@ -5,6 +5,7 @@ from collections import Counter
 from itertools import combinations
 
 from lib import embeddings
+from lib import clinical_scoring
 
 # Termini medici comuni per estrazione keyword
 _MEDICAL_STOP = {
@@ -21,8 +22,63 @@ _MEDICAL_STOP = {
 }
 
 
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.lower().strip())
+# Italian ↔ English medical term pairs — normalized to the English stem so
+# keyword overlap works even when QVAC answers in Italian and cloud models
+# answer in English (or vice-versa). Intentionally small and high-precision:
+# only terms that are unambiguous clinical equivalents, not free translation.
+_MEDICAL_CANON = {
+    "appendicite": "appendicitis",
+    "appendicitis": "appendicitis",
+    "adenite": "adenitis",
+    "adenitis": "adenitis",
+    "mesenterica": "mesenteric",
+    "mesenteric": "mesenteric",
+    "linfadenite": "lymphadenitis",
+    "lymphadenitis": "lymphadenitis",
+    "gastroenterite": "gastroenteritis",
+    "gastroenteritis": "gastroenteritis",
+    "infarto": "infarction",
+    "infarction": "infarction",
+    "infartu": "infarction",
+    "miocardico": "myocardial",
+    "miocardica": "myocardial",
+    "myocardial": "myocardial",
+    "coronarica": "coronary",
+    "coronary": "coronary",
+    "angina": "angina",
+    "pericardite": "pericarditis",
+    "pericarditis": "pericarditis",
+    "embolia": "embolism",
+    "embolism": "embolism",
+    "polmonare": "pulmonary",
+    "pulmonary": "pulmonary",
+    "meningite": "meningitis",
+    "meningitis": "meningitis",
+    "encefalite": "encephalitis",
+    "encephalitis": "encephalitis",
+    "anafilassi": "anaphylaxis",
+    "anaphylaxis": "anaphylaxis",
+    "urinaria": "urinary",
+    "urinary": "urinary",
+    "infezione": "infection",
+    "infection": "infection",
+    "diverticolo": "diverticulum",
+    "diverticulitis": "diverticulitis",
+    "acuta": "acute",
+    "acuto": "acute",
+    "acute": "acute",
+    "cronica": "chronic",
+    "chronic": "chronic",
+    "sclerosi": "sclerosis",
+    "sclerosis": "sclerosis",
+    "multipla": "multiple",
+    "multiple": "multiple",
+}
+
+
+def _canonical_keyword(word: str) -> str:
+    w = word.lower()
+    return _MEDICAL_CANON.get(w, w)
 
 
 # Real structured answers (ChatGPT/Claude in particular) very often lead with
@@ -42,7 +98,7 @@ def _normalize(text: str) -> str:
 # "Differential diagnosis" section even appears, and the diagnosis section
 # would come back empty/garbage.
 _DIAGNOSIS_HEADER = re.compile(
-    r"(?:^|\n)\s*(?:[-•*]\s*)?(?:\**)\s*(?:differential diagnos[ie]s|likely diagnos[ie]s|"
+    r"(?:^|\n)\s*(?:#{1,3}\s*)?(?:[-•*]\s*)?(?:\**)\s*(?:differential diagnos[ie]s|likely diagnos[ie]s|"
     r"most likely diagnos[ie]s|top diagnos[ie]s|probable diagnos[ie]s|primary diagnos[ie]s|"
     r"clinical impression|assessment(?: and plan)?|"
     r"diagnosi differenziale|diagnosi principal[ei]|diagnos[ei] pi[uù] probabil[ei]|"
@@ -61,23 +117,52 @@ _SECTION_STOP_HEADER = re.compile(
 )
 
 
+def _header_priority(header_match: str) -> int:
+    """Higher = more specific diagnosis header. Generic 'assessment' is lowest."""
+    t = header_match.lower()
+    if re.search(r"differential diagnos|diagnosi differenziale", t):
+        return 100
+    if re.search(r"most likely diagnos|diagnos.*pi[uù] probabil", t):
+        return 90
+    if re.search(r"likely diagnos|probable diagnos|top diagnos", t):
+        return 80
+    if re.search(r"primary diagnos|diagnosi principal", t):
+        return 70
+    if "clinical impression" in t:
+        return 50
+    if re.search(r"ipotesi diagnostic", t):
+        return 40
+    if re.search(r"assessment", t):
+        return 10
+    return 20
+
+
 def _diagnosis_section(text: str):
-    """Slice of `text` right after a diagnosis-labeled header, stopping at the
-    next section header (tests/plan/urgency/...) if any. Returns ``None`` if
-    no explicit diagnosis header is found."""
-    header = _DIAGNOSIS_HEADER.search(text)
-    if not header:
-        return None
-    start = header.end()
-    stop = _SECTION_STOP_HEADER.search(text, start)
-    end = stop.start() if stop else len(text)
-    section = text[start:end].strip()
-    # A genuine diagnosis section is at least a short phrase — a header match
-    # immediately followed by another section (or by punctuation only) is a
-    # sign the header matched somewhere spurious, not a real section boundary.
-    if not section or len(section) < 6:
-        return None
-    return section
+    """Best diagnosis-labeled section in `text`, not merely the first match.
+
+    Claude (and others) often open with a generic "Assessment and plan"
+    header whose body is a narrative case summary — NOT the differential
+    list. The old code grabbed the *first* header match, so Claude's real
+    "Most likely diagnoses:" numbered list was ignored and every KPI that
+    depends on diagnoses[0] collapsed. We now scan every header, score by
+    specificity, and prefer sections that actually contain a numbered list.
+    """
+    best_section = None
+    best_prio = -1
+    for header in _DIAGNOSIS_HEADER.finditer(text):
+        start = header.end()
+        stop = _SECTION_STOP_HEADER.search(text, start)
+        end = stop.start() if stop else len(text)
+        section = text[start:end].strip()
+        if not section or len(section) < 6:
+            continue
+        prio = _header_priority(header.group(0))
+        if re.search(r"(?:^|\n)\s*\d+[\.\)]", section):
+            prio += 8
+        if prio > best_prio:
+            best_prio = prio
+            best_section = section
+    return best_section
 
 
 def extract_diagnoses(text: str) -> list[str]:
@@ -117,7 +202,7 @@ def extract_diagnoses(text: str) -> list[str]:
                     item,
                     flags=re.I,
                 )
-                if len(item) > 8 and item not in found:
+                if len(item) >= 4 and item not in found:
                     found.append(item[:120])
         return found
 
@@ -150,6 +235,20 @@ def extract_diagnoses(text: str) -> list[str]:
         if item not in diagnoses:
             diagnoses.append(item)
 
+    # Whole-document scan: catches Claude/GPT answers where the real numbered
+    # differential sits *below* a narrative "Assessment and plan" block.
+    if len(diagnoses) < 2:
+        fallback = clinical_scoring.find_best_diagnosis_list(text)
+        for item in fallback:
+            if item not in diagnoses:
+                diagnoses.append(item)
+    elif not clinical_scoring._CONDITION_HINT.search(diagnoses[0]):
+        # Header section returned narrative prose, not conditions — prefer a
+        # numbered block that actually names diagnoses.
+        fallback = clinical_scoring.find_best_diagnosis_list(text)
+        if fallback and clinical_scoring._CONDITION_HINT.search(fallback[0]):
+            diagnoses = fallback + [d for d in diagnoses if d not in fallback]
+
     if not diagnoses:
         for line in text.splitlines():
             line = line.strip()
@@ -172,10 +271,16 @@ def extract_diagnoses(text: str) -> list[str]:
     return diagnoses[:8]
 
 
+def _fallback_composite(rel: float, acc: float, sem) -> float:
+    if sem is None:
+        return round((rel + acc) / 2, 1)
+    return round(rel * 0.25 + acc * 0.35 + sem * 0.40, 1)
+
+
 def extract_keywords(text: str) -> set[str]:
     """Estrae keyword mediche rilevanti da un testo."""
-    words = re.findall(r"[a-zA-Zàèéìòù]{4,}", text.lower())
-    return {w for w in words if w not in _MEDICAL_STOP and len(w) > 3}
+    words = re.findall(r"[a-zA-Zàèéìòù]{3,}", text.lower())
+    return {_canonical_keyword(w) for w in words if w not in _MEDICAL_STOP and len(w) > 2}
 
 
 def jaccard_similarity(a: set, b: set) -> float:
@@ -214,9 +319,15 @@ def jaccard_similarity(a: set, b: set) -> float:
 
 
 def diagnosis_overlap(diag_a: list[str], diag_b: list[str]) -> float:
-    """Similarita' tra due liste di diagnosi (keyword Jaccard media)."""
+    """Similarita' tra due liste di diagnosi (keyword Jaccard media).
+
+    Only the top three items are compared so a Premium-tier answer that
+    lists five extra differentials is not penalised against a terse one.
+    """
     if not diag_a or not diag_b:
         return 0.0
+    diag_a = diag_a[:3]
+    diag_b = diag_b[:3]
     scores = []
     for da in diag_a:
         kw_a = extract_keywords(da)
@@ -362,62 +473,197 @@ def compute_semantic_scores(active: dict, diagnoses: dict) -> dict:
     }
 
 
-def compare_with_gold_standard(gold_text: str, diagnoses: dict, keys: list) -> dict:
-    """Confronta ogni modello con la diagnosi di riferimento clinica certa.
+def compare_with_gold_standard(
+    gold_text: str,
+    active: dict,
+    diagnoses: dict,
+    keys: list,
+    urgency: dict = None,
+) -> dict:
+    """Confronto vs diagnosi certa — significato clinico, non ripetizione di parole.
 
-    Usa il testo incollato dall'utente (es. patologia reale anonimizzata o referto)
-    come ground truth per calcolare scostamenti rispetto alla verità di riferimento.
+    Confronta in modo semantico (embedding locale) diagnosi, piano/next step,
+    urgenza e sintesi complessiva rispetto al testo di riferimento incollato.
+    Le metriche keyword restano solo come fallback se gli embedding non sono
+    disponibili.
     """
+    gold_text = (gold_text or "").strip()
     gold_diagnoses = extract_diagnoses(gold_text)
-    if not gold_diagnoses and gold_text.strip():
-        gold_diagnoses = [gold_text.strip()[:300]]
+    if not gold_diagnoses and gold_text:
+        gold_diagnoses = [gold_text[:300]]
 
-    gold_primary_kw = extract_keywords(gold_diagnoses[0]) if gold_diagnoses else set()
-    gold_all_kw = extract_keywords(gold_text)
-    gold_primary_text = gold_diagnoses[0] if gold_diagnoses else gold_text.strip()[:300]
+    gold_urgency = extract_urgency(gold_text)
+    gold_profile = clinical_scoring.build_clinical_profile(
+        gold_text, gold_diagnoses, gold_urgency
+    )
+    gold_dx_text = gold_profile["diagnosis_block"] or (
+        gold_diagnoses[0] if gold_diagnoses else gold_text[:300]
+    )
+    gold_mgmt_text = gold_profile["management"] or gold_text[:600]
+    gold_summary_text = gold_profile["summary"] or gold_text[:700]
 
-    accuracy_primary = {}
-    coverage_ddx = {}
-    semantic_accuracy = {}
+    semantic_diagnosis = {}
+    semantic_management = {}
+    semantic_urgency = {}
+    semantic_summary = {}
+    semantic_composite = {}
     semantic_available = False
 
+    # Legacy keyword fields — fallback only
+    accuracy_primary = {}
+    coverage_ddx = {}
+
     for k in keys:
+        output = (active.get(k) or {}).get("output", "")
         model_diags = diagnoses.get(k, [])
-        if not model_diags:
+        model_urgency = (urgency or {}).get(k) or extract_urgency(output)
+        model_profile = clinical_scoring.build_clinical_profile(
+            output, model_diags, model_urgency
+        )
+
+        dx_candidates_model = [
+            model_profile["diagnosis_block"],
+            ". ".join(model_diags[:3]) if model_diags else "",
+        ]
+        dx_candidates_gold = [gold_dx_text, ". ".join(gold_diagnoses[:3])]
+
+        dx_sim = _best_semantic_similarity(dx_candidates_model, dx_candidates_gold)
+        mgmt_sim = _best_semantic_similarity(
+            [model_profile["management"], output[:600]],
+            [gold_mgmt_text, gold_text[:600]],
+        )
+        summary_sim = _best_semantic_similarity(
+            [model_profile["summary"], output[:700]],
+            [gold_summary_text, gold_text[:700]],
+        )
+        urg_sim = _urgency_vs_gold(model_urgency, gold_urgency, output, gold_text)
+
+        semantic_diagnosis[k] = dx_sim
+        semantic_management[k] = mgmt_sim
+        semantic_urgency[k] = urg_sim
+        semantic_summary[k] = summary_sim
+
+        if any(v is not None for v in (dx_sim, mgmt_sim, urg_sim, summary_sim)):
+            semantic_available = True
+
+        composite = _gold_semantic_composite(dx_sim, mgmt_sim, urg_sim, summary_sim)
+        semantic_composite[k] = composite if composite is not None else 0.0
+
+        # Keyword fallback (not used in composite when embeddings work)
+        if model_diags and gold_diagnoses:
+            primary_kw = extract_keywords(model_diags[0])
+            gold_kw = extract_keywords(gold_diagnoses[0])
+            accuracy_primary[k] = round(
+                jaccard_similarity(primary_kw, gold_kw) * 100, 1
+            ) if gold_kw else 0.0
+            coverage_ddx[k] = _semantic_ddx_coverage(model_diags, gold_diagnoses)
+        else:
             accuracy_primary[k] = 0.0
             coverage_ddx[k] = 0.0
-            semantic_accuracy[k] = None
-            continue
-
-        primary_kw = extract_keywords(model_diags[0])
-        if gold_primary_kw:
-            accuracy_primary[k] = round(
-                jaccard_similarity(primary_kw, gold_primary_kw) * 100, 1
-            )
-        else:
-            accuracy_primary[k] = 0.0
-
-        if gold_diagnoses:
-            coverage_ddx[k] = diagnosis_overlap(model_diags, gold_diagnoses)
-        else:
-            model_kw = extract_keywords(" ".join(model_diags))
-            coverage_ddx[k] = round(
-                jaccard_similarity(model_kw, gold_all_kw) * 100, 1
-            ) if gold_all_kw else 0.0
-
-        sim = embeddings.semantic_similarity_pct(". ".join(model_diags[:2]), gold_primary_text)
-        semantic_accuracy[k] = sim
-        if sim is not None:
-            semantic_available = True
 
     return {
         "gold_diagnoses": gold_diagnoses,
-        "accuracy_primary": accuracy_primary,
-        "coverage_ddx": coverage_ddx,
-        "gold_keywords": sorted(gold_primary_kw),
-        "semantic_accuracy": semantic_accuracy,
+        "gold_profile": gold_profile,
+        "semantic_diagnosis": semantic_diagnosis,
+        "semantic_management": semantic_management,
+        "semantic_urgency": semantic_urgency,
+        "semantic_summary": semantic_summary,
+        "semantic_composite": semantic_composite,
+        "semantic_accuracy": semantic_composite,
         "semantic_available": semantic_available,
+        "accuracy_primary": semantic_diagnosis if semantic_available else accuracy_primary,
+        "coverage_ddx": semantic_management if semantic_available else coverage_ddx,
+        "gold_keywords": sorted(extract_keywords(gold_diagnoses[0])) if gold_diagnoses else [],
     }
+
+
+def _best_semantic_similarity(texts_a: list, texts_b: list):
+    """Max semantic similarity across candidate text slices (paraphrase-tolerant)."""
+    best = None
+    for a in texts_a:
+        a = (a or "").strip()
+        if len(a) < 4:
+            continue
+        for b in texts_b:
+            b = (b or "").strip()
+            if len(b) < 4:
+                continue
+            sim = embeddings.semantic_similarity_pct(a, b)
+            if sim is not None:
+                best = sim if best is None else max(best, sim)
+    return best
+
+
+def _urgency_vs_gold(model_u: dict, gold_u: dict, model_text: str, gold_text: str):
+    """Urgenza: match di livello + similarità semantica del testo di triage."""
+    label_score = None
+    g_label = gold_u.get("label")
+    m_label = model_u.get("label")
+    if g_label:
+        order = {"critical": 4, "high": 3, "moderate": 2, "low": 1, None: 0}
+        if m_label == g_label:
+            label_score = 100.0
+        elif m_label:
+            diff = abs(order.get(m_label, 0) - order.get(g_label, 0))
+            label_score = {0: 100.0, 1: 78.0, 2: 50.0, 3: 25.0}.get(diff, 15.0)
+        else:
+            label_score = 45.0
+
+    urg_m = re.search(
+        r"(?:URGENZA|URGENCY|triage)\s*[:\-]?\s*[^\n]{0,160}",
+        model_text or "",
+        re.I,
+    )
+    urg_g = re.search(
+        r"(?:URGENZA|URGENCY|triage)\s*[:\-]?\s*[^\n]{0,160}",
+        gold_text or "",
+        re.I,
+    )
+    text_sim = _best_semantic_similarity(
+        [urg_m.group(0) if urg_m else model_text[:400], model_text[:400]],
+        [urg_g.group(0) if urg_g else gold_text[:400], gold_text[:400]],
+    )
+
+    parts = [p for p in (label_score, text_sim) if p is not None]
+    if not parts:
+        return None
+    if label_score is not None and text_sim is not None:
+        return round(label_score * 0.55 + text_sim * 0.45, 1)
+    return round(sum(parts) / len(parts), 1)
+
+
+def _gold_semantic_composite(dx, mgmt, urg, summary):
+    """Peso maggiore su diagnosi e piano — nessuna penalità per parole diverse."""
+    weights = {
+        "dx": (dx, 0.42),
+        "mgmt": (mgmt, 0.33),
+        "urg": (urg, 0.15),
+        "summary": (summary, 0.10),
+    }
+    total_w = 0.0
+    total = 0.0
+    for _, (val, w) in weights.items():
+        if val is not None:
+            total += val * w
+            total_w += w
+    if total_w <= 0:
+        return None
+    return round(total / total_w, 1)
+
+
+def _semantic_ddx_coverage(model_diags: list, gold_diags: list) -> float:
+    """Quanto ogni voce gold è coperta semanticamente (non per keyword)."""
+    if not model_diags or not gold_diags:
+        return 0.0
+    per_gold = []
+    for gd in gold_diags[:5]:
+        sims = []
+        for md in model_diags[:5]:
+            s = embeddings.semantic_similarity_pct(md, gd)
+            if s is not None:
+                sims.append(s)
+        per_gold.append(max(sims) if sims else 0.0)
+    return round(sum(per_gold) / len(per_gold), 1)
 
 
 def compare_all(results: dict, gold_standard_text: str = None) -> dict:
@@ -475,17 +721,43 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
         density = min(kw_count / 30, 1.0) * 50
         model_scores[k] = round(richness + density, 1)
 
-    final = compute_final_scores(active, diagnoses, keywords)
     semantic = compute_semantic_scores(active, diagnoses)
-
-    use_gold = bool(gold_standard_text and gold_standard_text.strip())
-    gold_compare = None
-    if use_gold:
-        gold_compare = compare_with_gold_standard(
-            gold_standard_text.strip(), diagnoses, list(active.keys())
-        )
+    final = compute_final_scores(
+        active, diagnoses, keywords, semantic_pairs=semantic.get("pairs")
+    )
 
     urgency = {k: extract_urgency(v["output"]) for k, v in active.items()}
+    clinical = clinical_scoring.compute_clinical_kpis(active, diagnoses, urgency)
+
+    # Primary ranking KPIs — intelligent clinical dimensions (meaning, not wording).
+    # Keyword overlap from `final` is kept only for the explain-score dialog.
+    if clinical["available"]:
+        accuracy_consensus = {
+            k: clinical["diagnosis_semantic"].get(k) or final["accuracy_consensus"].get(k, 0)
+            for k in active
+        }
+        reliability = {
+            k: clinical["summary_semantic"].get(k) or final["reliability"].get(k, 0)
+            for k in active
+        }
+        semantic_similarity = {
+            k: clinical["management_semantic"].get(k)
+            for k in active
+        }
+        clinical_composite = clinical["composite"]
+    else:
+        reliability = final["reliability"]
+        accuracy_consensus = final["accuracy_consensus"]
+        semantic_similarity = semantic["scores"]
+        clinical_composite = {
+            k: _fallback_composite(
+                reliability.get(k, 0),
+                accuracy_consensus.get(k, 0),
+                semantic_similarity.get(k),
+            )
+            for k in active
+        }
+
     labels = [u["label"] for u in urgency.values() if u["label"]]
     urgency_agreement = 0.0
     urgency_majority_label = None
@@ -493,6 +765,17 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
         label_counts = Counter(labels).most_common(1)[0]
         urgency_majority_label = label_counts[0]
         urgency_agreement = round(label_counts[1] / len(labels) * 100, 1)
+
+    use_gold = bool(gold_standard_text and gold_standard_text.strip())
+    gold_compare = None
+    if use_gold:
+        gold_compare = compare_with_gold_standard(
+            gold_standard_text.strip(),
+            active,
+            diagnoses,
+            list(active.keys()),
+            urgency=urgency,
+        )
 
     return {
         "diagnoses": diagnoses,
@@ -504,17 +787,27 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
         "diagnosis_counts": {k: len(diagnoses[k]) for k in active},
         "keyword_counts": {k: len(keywords[k]) for k in active},
         "active_count": len(active),
-        "reliability": final["reliability"],
+        "reliability": reliability,
         "reliability_pairs": final["reliability_pairs"],
-        "accuracy_consensus": final["accuracy_consensus"],
+        "accuracy_consensus": accuracy_consensus,
         "accuracy_pairs": final["accuracy_pairs"],
         "primary_keywords": final["primary_keywords"],
         "consensus_keywords": final["consensus_keywords"],
         "consensus_keyword_counts": final["consensus_keyword_counts"],
-        "semantic_similarity": semantic["scores"],
+        "semantic_similarity": semantic_similarity,
         "semantic_pairs": semantic["pairs"],
-        "semantic_available": semantic["available"],
+        "semantic_available": clinical["available"] or semantic["available"],
         "primary_diagnosis_text": semantic["primary_text"],
+        "clinical_composite": clinical_composite,
+        "clinical_profiles": clinical.get("profiles", {}),
+        "clinical_dimensions": {
+            "diagnosis": clinical.get("diagnosis_semantic", {}),
+            "management": clinical.get("management_semantic", {}),
+            "summary": clinical.get("summary_semantic", {}),
+            "urgency": clinical.get("urgency_agreement", {}),
+        },
+        "keyword_reliability": final["reliability"],
+        "keyword_accuracy": final["accuracy_consensus"],
         "urgency": urgency,
         "urgency_agreement": urgency_agreement,
         "urgency_majority_label": urgency_majority_label,
@@ -523,7 +816,12 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
     }
 
 
-def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -> dict:
+def compute_final_scores(
+    active: dict,
+    diagnoses: dict,
+    keywords: dict = None,
+    semantic_pairs: dict = None,
+) -> dict:
     """KPI finali a parita' di prompt: affidabilita' e accuratezza (consenso).
 
     Affidabilita': quanto le diagnosi di un modello concordano con gli altri
@@ -542,6 +840,16 @@ def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -
     """
     keys = list(active.keys())
     keywords = keywords or {k: extract_keywords(active[k].get("output", "")) for k in keys}
+    semantic_pairs = semantic_pairs or {}
+
+    def _pair_sem(a: str, b: str):
+        return semantic_pairs.get(a, {}).get(b)
+
+    def _blend_kw_sem(kw_score: float, a: str, b: str) -> float:
+        sem = _pair_sem(a, b)
+        if sem is not None:
+            return round(kw_score * 0.35 + sem * 0.65, 1)
+        return round(kw_score, 1)
 
     # Affidabilita' = media concordanza pairwise con tutti gli altri, mescolando
     # il confronto per liste (peso maggiore, quando disponibile) con quello
@@ -558,6 +866,7 @@ def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -
                 pair_val = round(list_score * 0.65 + text_score * 0.35, 1)
             else:
                 pair_val = text_score
+            pair_val = _blend_kw_sem(pair_val, k, j)
             pair_scores.append(pair_val)
             reliability_pairs[k][j] = pair_val
         reliability[k] = round(sum(pair_scores) / len(pair_scores), 1) if pair_scores else 0.0
@@ -603,6 +912,7 @@ def compute_final_scores(active: dict, diagnoses: dict, keywords: dict = None) -
         pair_scores = []
         for j in others:
             pair_val = round(jaccard_similarity(kw, primary_kw.get(j, set())) * 100, 1)
+            pair_val = _blend_kw_sem(pair_val, k, j)
             accuracy_pairs[k][j] = pair_val
             pair_scores.append(pair_val)
         accuracy_consensus[k] = round(sum(pair_scores) / len(pair_scores), 1)

@@ -1,13 +1,11 @@
-"""Ranking charts: radar, bar charts, dimension breakdown."""
+"""Plotly charts for the benchmark dashboard."""
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from lib.i18n import t
-from lib.metrics import URGENCY_META, _L
+from lib.metrics import TABLE_MODEL_SHORT, URGENCY_META, _L
 from lib.tiers import MODEL_CONFIG
-
-MODEL_CONFIG_NAME = {key: cfg["name"] for key, cfg in MODEL_CONFIG.items()}
 
 MODEL_COLORS = {
     "chatgpt": "#10a37f",
@@ -15,6 +13,8 @@ MODEL_COLORS = {
     "gemini": "#8ab4f8",
     "qvac": "#00d09c",
 }
+
+MODEL_CONFIG_NAME = {k: v["name"] for k, v in MODEL_CONFIG.items()}
 
 FILL_COLORS = {
     "chatgpt": "rgba(16,163,127,0.18)",
@@ -26,6 +26,10 @@ FILL_COLORS = {
 CHART_BG = "#0e1117"
 PLOT_BG = "#161b26"
 GRID = "#2a3142"
+
+
+def _chart_model_label(key: str, full_name: str) -> str:
+    return TABLE_MODEL_SHORT.get(key, full_name)
 
 
 def _base_layout(title: str, height: int = 500) -> dict:
@@ -57,16 +61,18 @@ def fig_radar(ranking_df, use_gold: bool, lang: str = "en", sem_available: bool 
         col_keys += [
             L["acc_clin_short"],
             L["ddx_short"],
-            L["privacy"],
-            L["score_cons_short"],
+            L["score_cons_rescaled"],
             L["score_clin_short"],
         ]
         categories = col_keys[:]
     else:
-        col_keys = [L["rel_short"], L["acc_cons_short"]]
-        if sem_available:
-            col_keys.append(L["sem_short"])
-        col_keys += [L["privacy"], L["score_final"]]
+        col_keys = [
+            L["acc_cons_short"],
+            L["sem_short"],
+            L["rel_short"],
+            L["urg_dim_short"],
+            L["score_cons_rescaled"],
+        ]
         categories = col_keys[:]
 
     fig = go.Figure()
@@ -107,71 +113,63 @@ def fig_radar(ranking_df, use_gold: bool, lang: str = "en", sem_available: bool 
 
 
 def fig_ranking_bars(ranking_df, use_gold: bool, lang: str = "en", height: int = 320) -> go.Figure:
+    """Single ranking chart — consensus (relative) or clinical (absolute) only."""
+    return fig_consensus_ranking_bars(ranking_df, lang, height)
+
+
+def fig_consensus_ranking_bars(ranking_df, lang: str = "en", height: int = 260) -> go.Figure:
+    """Consensus ranking: best model in the group = 100%, others scale down."""
     L = _L(lang)
-    models = ranking_df[L["model"]].tolist()
+    models = [
+        _chart_model_label(row["key"], row[L["model"]])
+        for _, row in ranking_df.iterrows()
+    ]
     colors = [MODEL_COLORS.get(k, "#94a3b8") for k in ranking_df["key"]]
-
-    fig = make_subplots(
-        rows=1,
-        cols=2 if use_gold else 1,
-        subplot_titles=(
-            [t("chart.bars_final", lang), t("chart.bars_vs", lang)]
-            if use_gold
-            else [t("chart.bars_consensus", lang)]
-        ),
-        horizontal_spacing=0.12,
-    )
-
-    fig.add_trace(
+    fig = go.Figure(
         go.Bar(
             y=models,
-            x=ranking_df[L["score_final"]],
+            x=ranking_df[L["score_cons_rescaled"]],
             orientation="h",
             marker=dict(color=colors, line=dict(color="#1e293b", width=1)),
             text=[
-                f"#{r} · {v}%"
-                for r, v in zip(ranking_df[L["rank"]], ranking_df[L["score_final"]])
+                f"#{int(r)} · {v}%"
+                for r, v in zip(ranking_df[L["rank_consensus"]], ranking_df[L["score_cons_rescaled"]])
             ],
             textposition="outside",
-            name=L["score_final"],
-            showlegend=False,
-        ),
-        row=1,
-        col=1,
+        )
     )
+    layout = _base_layout(t("chart.bars_consensus", lang), height=height)
+    layout["margin"] = dict(l=40, r=60, t=60, b=30)
+    layout["xaxis"] = dict(range=[0, 110], title=t("chart.score_pct", lang))
+    fig.update_layout(**layout)
+    fig.update_yaxes(autorange="reversed")
+    return fig
 
-    if use_gold:
-        fig.add_trace(
-            go.Bar(
-                y=models,
-                x=ranking_df[L["score_cons_short"]],
-                orientation="h",
-                name=L["score_cons_short"],
-                marker_color="#3b82f6",
-                opacity=0.85,
-            ),
-            row=1,
-            col=2,
-        )
-        fig.add_trace(
-            go.Bar(
-                y=models,
-                x=ranking_df[L["score_clin_short"]],
-                orientation="h",
-                name=L["score_clin_short"],
-                marker_color="#f5c518",
-                opacity=0.85,
-            ),
-            row=1,
-            col=2,
-        )
 
-    layout = _base_layout(t("chart.bars_title", lang), height=height)
-    layout["barmode"] = "group"
-    score_lbl = t("chart.score_pct", lang)
-    layout["xaxis"] = dict(range=[0, 105], title=score_lbl)
-    if use_gold:
-        layout["xaxis2"] = dict(range=[0, 105], title=score_lbl)
+def fig_clinical_ranking_bars(ranking_df, lang: str = "en", height: int = 260) -> go.Figure:
+    """Clinical ranking vs. confirmed diagnosis — absolute % (100% = perfect match with reference)."""
+    L = _L(lang)
+    score_col = L["score_clin_short"]
+    models = [
+        _chart_model_label(row["key"], row[L["model"]])
+        for _, row in ranking_df.iterrows()
+    ]
+    fig = go.Figure(
+        go.Bar(
+            y=models,
+            x=ranking_df[score_col],
+            orientation="h",
+            marker=dict(color="#f5c518", line=dict(color="#1e293b", width=1)),
+            text=[
+                f"#{int(r)} · {v}%"
+                for r, v in zip(ranking_df[L["rank_clinical"]], ranking_df[score_col])
+            ],
+            textposition="outside",
+        )
+    )
+    layout = _base_layout(t("chart.bars_clinical", lang), height=height)
+    layout["margin"] = dict(l=40, r=60, t=60, b=30)
+    layout["xaxis"] = dict(range=[0, 110], title=t("chart.score_pct", lang))
     fig.update_layout(**layout)
     fig.update_yaxes(autorange="reversed")
     return fig
@@ -183,17 +181,16 @@ def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_ava
     fig = go.Figure()
 
     dims = [
-        (L["rel_short"], "#6366f1"),
         (L["acc_cons_short"], "#3b82f6"),
+        (L["sem_short"], "#a855f7"),
+        (L["rel_short"], "#6366f1"),
+        (L["urg_dim_short"], "#f97316"),
     ]
-    if sem_available:
-        dims.append((L["sem_short"], "#a855f7"))
     if use_gold:
         dims += [
             (L["acc_clin_short"], "#f5c518"),
-            (L["ddx_short"], "#f97316"),
+            (L["ddx_short"], "#eab308"),
         ]
-    dims.append((L["privacy"], "#00d09c"))
 
     for dim_name, color in dims:
         fig.add_bar(name=dim_name, x=models, y=ranking_df[dim_name].fillna(0), marker_color=color)
@@ -207,28 +204,28 @@ def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_ava
     return fig
 
 
-def fig_privacy_gauges(ranking_df, lang: str = "en", height: int = 230) -> go.Figure:
-    """Gauge per modello: 0% (dati inviati al cloud) → 100% (elaborazione locale)."""
+def fig_privacy_gauges(ranking_df, lang: str = "en", height: int = 280) -> go.Figure:
+    """Gauge per modello: 0% cloud → 100% on-device. Layout manuale per evitare sovrapposizioni."""
     L = _L(lang)
-    n = len(ranking_df)
-    fig = make_subplots(
-        rows=1,
-        cols=max(n, 1),
-        specs=[[{"type": "indicator"}] * max(n, 1)],
-    )
-    for i, (_, row) in enumerate(ranking_df.iterrows(), start=1):
+    n = max(len(ranking_df), 1)
+    pad = 0.04
+    slot = (1.0 - pad * (n + 1)) / n
+    fig = go.Figure()
+    for i, (_, row) in enumerate(ranking_df.iterrows()):
         key = row["key"]
         color = MODEL_COLORS.get(key, "#94a3b8")
-        value = row[L["privacy"]]
+        label = _chart_model_label(key, row[L["model"]])
+        x0 = pad + i * (slot + pad)
+        x1 = x0 + slot
         fig.add_trace(
             go.Indicator(
                 mode="gauge+number",
-                value=value,
-                number=dict(suffix="%", font=dict(size=26, color=color)),
-                title=dict(text=row[L["model"]], font=dict(size=13, color="#e2e8f0")),
+                value=row[L["privacy"]],
+                number=dict(suffix="%", font=dict(size=22, color=color)),
+                title=dict(text=label, font=dict(size=12, color="#e2e8f0")),
                 gauge=dict(
-                    axis=dict(range=[0, 100], tickcolor=GRID, tickfont=dict(size=9)),
-                    bar=dict(color=color, thickness=0.32),
+                    axis=dict(range=[0, 100], tickcolor=GRID, tickfont=dict(size=8)),
+                    bar=dict(color=color, thickness=0.35),
                     bgcolor=PLOT_BG,
                     borderwidth=0,
                     steps=[
@@ -237,13 +234,11 @@ def fig_privacy_gauges(ranking_df, lang: str = "en", height: int = 230) -> go.Fi
                         {"range": [75, 100], "color": "rgba(0,208,156,0.14)"},
                     ],
                 ),
-                domain={"row": 0, "column": i - 1},
-            ),
-            row=1,
-            col=i,
+                domain={"x": [x0, x1], "y": [0.05, 0.95]},
+            )
         )
     layout = _base_layout(t("chart.privacy_title", lang), height=height)
-    layout["margin"] = dict(l=20, r=20, t=70, b=10)
+    layout["margin"] = dict(l=8, r=8, t=72, b=8)
     fig.update_layout(**layout)
     return fig
 

@@ -1,94 +1,134 @@
-# QVAC vs Cloud LLMs - Health Test
+# QVAC vs Cloud LLMs — Health Test
 
-Medical LLM & VLM Benchmark Dashboard con Tokenomics.
+Dashboard di benchmark clinico: confronta **ChatGPT**, **Claude** e **Gemini** (risposte incollate dai siti ufficiali) con **Tether QVAC MedPsy 4B** in inferenza locale reale via Ollama.
 
-Confronta tre modelli Cloud (risposte incollate manualmente dai siti ufficiali)
-contro il **vero** [qvac/MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B) di
-Tether AI Research, eseguito in locale via Ollama — non una risposta
-precompilata. VLM, tokenomics USDT e confronto diagnostico automatico incluso.
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py)
 
-**Onestà del benchmark**: QVAC non ha "armi" diverse dagli altri modelli. Gira
-per davvero sullo stesso prompt identico incollato su ChatGPT/Claude/Gemini,
-con TTFT/TPS/latenza misurati per davvero (non simulati). Se il motore locale
-non è raggiungibile, la dashboard mostra un errore chiaro — non inventa mai
-una risposta.
+**Demo pubblica (gratuita):** dopo il deploy su Streamlit Community Cloud → vedi sezione [Dashboard pubblica](#dashboard-pubblica-gratuita) sotto.
 
-## Setup del motore locale (una tantum)
+| | Locale (completo) | Cloud pubblica (gratis) |
+|---|---|---|
+| UI + ranking + slot salvati | ✅ | ✅ |
+| Incolla risposte cloud | ✅ | ✅ |
+| **Run benchmark** QVAC live | ✅ Ollama | ❌ *(incolla output QVAC a mano)* |
+| Embedding semantico | ✅ Ollama | ⚠️ solo keyword se Ollama assente |
+| Costo | **0 €** | **0 €** |
 
-```
+---
+
+## Onestà del benchmark
+
+- **Stesso prompt clinico** copiato su tutti i siti cloud e usato per QVAC.
+- **Nessuna risposta inventata**: se Ollama non risponde, QVAC mostra errore — non simula mai un risultato.
+- **Cloud = tier gratuito** del tuo account (chatgpt.com, claude.ai, gemini.google.com). Non è un confronto con GPT‑4o / Claude Opus a pagamento unless you paste answers from those tiers.
+- **QVAC** = modello medico specializzato 4B on-device — vantaggio legittimo su casi clinici, non prova di supremazia su tutti i LLM commerciali.
+
+---
+
+## Avvio locale (macchina tua, tutto gratis)
+
+### Setup motore QVAC (una tantum)
+
+```bash
 ./scripts/setup_medpsy.sh
 ```
 
-Scarica Ollama (senza Homebrew), il file GGUF quantizzato di MedPsy-4B da
-Hugging Face (~2.7 GB) e crea il modello locale `medpsy-4b-cpu`. Vedi
-`lib/medpsy.py` per i dettagli di runtime (host/modello configurabili via
-`QVAC_OLLAMA_HOST` / `QVAC_OLLAMA_MODEL`).
+Scarica Ollama, il GGUF di [MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B-GGUF) (~2.7 GB) e il modello embedding `all-minilm-cpu`.
 
-## Avvio senza terminale
+### Dashboard
 
-Doppio click su **QVAC Dashboard.app** → Safari apre `http://localhost:8501`
-(`launch_dashboard.sh` avvia anche il motore Ollama locale se non è già attivo)
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+./run.sh
+```
 
-Bookmark consigliato: `http://localhost:8501`
+Oppure doppio click su **QVAC Dashboard.app** → `http://localhost:8501`
 
-Fermare: `./stop_dashboard.sh`
+---
 
 ## Flusso benchmark
 
-1. Scegli **tier** (Light / Medium / Premium) — stesso livello di analisi per tutti e 3 i cloud
-2. Opzionale: spunta **Apri siti nel browser**
-3. **Copia prompt** dall'expander e incollalo manualmente su ChatGPT, Claude, Gemini
-4. Clicca **Esegui Benchmark** → QVAC MedPsy genera la diagnosi in locale
-5. **Incolla** le 3 risposte cloud nei riquadri editabili
-6. **Ricalcola confronto diagnostico** — tutti e 4 i modelli nei KPI
+1. **Sidebar sinistra** → carica caso 1–5 (slot) o richiama risultato salvato  
+2. Opzionale: **Gold standard** (caso 5) — diagnosi certa per punteggio clinico semantico  
+3. **Copia prompt** → incolla su ChatGPT, Claude, Gemini (tier free del tuo account)  
+4. **Run benchmark** → QVAC MedPsy genera in locale (risposta simile ma non identica a ogni run)  
+5. **Incolla** le 3 risposte cloud nei riquadri  
+6. **Salva** nell’area risultati (main) → slot verde in sidebar  
+
+### Caso 5 — fino a 4 run + media
+
+1. Compila il template del caso reale anonimizzato  
+2. Incolla cloud **una volta** (puoi tenere le stesse risposte)  
+3. **Run benchmark** → **Salva run 1/4**  
+4. Ripeti run + salva fino a **4/4** (ogni run QVAC può variare leggermente)  
+5. Sidebar → **Ranking definitivo mediato** (media casi 1–4 + gold caso 5)
 
 ### Reset
 
-Il pulsante **Reset** in sidebar azzera tutto, **wallet incluso (0.00 USDT)**.
+- **Reset** (sidebar): azzera lavoro corrente, **mantiene** slot salvati  
+- **Reset risultati salvati**: cancella solo gli snapshot  
 
-### KPI
+---
 
-| Modello | Performance TTFT/TPS | Diagnosi |
-|---------|---------------------|----------|
-| Cloud (3 siti) | Non misurabile | Incolla manualmente |
-| QVAC MedPsy 4B | Misurato per davvero (Ollama, CPU) | Inferenza reale, streaming live + chain-of-thought |
+## KPI e punteggi
 
-Il confronto **Affidabilità** e **Accuratezza (consenso)** include tutti e 4 i modelli
-a parità di prompt.
+**Casi 1–4 (senza diagnosi certa):** punteggio di **consenso** — accordo tra modelli (affidabilità + accuratezza keyword + similarità semantica locale).
 
-## Struttura
+**Caso 5 (con gold standard):** punteggio **clinico semantico** vs diagnosi di riferimento (diagnosi, piano, urgenza).
+
+Pulsante **“Vedi come sono calcolati i punteggi”** sotto la classifica per il dettaglio.
+
+---
+
+## Dashboard pubblica (gratuita)
+
+Hosting **100% free** su [Streamlit Community Cloud](https://streamlit.io/cloud) (nessuna carta di credito).
+
+### Deploy in 2 minuti (una tantum)
+
+1. Clicca il badge **“Open in Streamlit”** in cima a questo README (o [deploy diretto](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py))  
+2. Accedi con GitHub (account gratis)  
+3. Conferma repo `FrancescoAloe91/qvac-vs-cloud-llms-health-test`, branch `main`, file `app.py`  
+4. **Deploy** → ottieni URL tipo `https://qvac-vs-cloud-llms-health-test.streamlit.app`
+
+### Cosa funziona sulla demo cloud
+
+- Presentazione UI, casi clinici, incolla cloud, ranking e slot  
+- Puoi **incollare manualmente** anche la risposta QVAC (generata sul tuo Mac con `./run.sh`)  
+- **Run benchmark** live richiede Ollama → solo in **locale**
+
+Aggiorna il link pubblico nel README dopo il primo deploy (Settings → General → App URL).
+
+---
+
+## Struttura progetto
 
 ```
-app.py
-lib/  cases, medpsy, metrics, browser, diagnosis_compare, wallet, vlm, reset
-QVAC Dashboard.app
+app.py                 # Dashboard Streamlit
+lib/                   # cases, medpsy, metrics, diagnosis_compare, session_store, …
+PRESENTATION.md        # Pitch one-pager (demo / slide)
+scripts/setup_medpsy.sh
 launch_dashboard.sh
+QVAC Dashboard.app
 ```
 
-### Punteggi (KPI)
+---
 
-Tre segnali reali, calcolati dal testo incollato — mai stimati o inventati:
-
-1. **Affidabilità** — overlap tra la diagnosi differenziale di un modello e quella di ogni altro modello (lista + parole chiave).
-2. **Accuratezza (consenso)** — quanto la diagnosi primaria di un modello combacia con le parole chiave su cui la maggioranza converge.
-3. **Similarità semantica** — somiglianza di *significato* (non solo di parole) tra le diagnosi primarie, calcolata da un piccolo embedding model locale (`all-minilm`, via Ollama, CPU-only). Se il motore locale non è raggiungibile questo terzo segnale viene semplicemente omesso, con un avviso in dashboard — non viene mai inventato un numero.
-
-Il **punteggio finale** (0-100) è una media pesata dei tre segnali sopra. Se viene fornita una diagnosi di riferimento, compare anche un **voto clinico 1-10** con una rubrica dedicata. Ogni singolo numero è ispezionabile dal pulsante **"See exactly how every score was calculated"** sotto la classifica.
-
-## Continuare lo sviluppo da un altro PC
-
-Questo progetto è su GitHub. Per riprendere il lavoro da un'altra macchina con Cursor:
+## Continuare da un altro PC
 
 ```bash
-git clone https://github.com/<tuo-utente>/qvac-vs-cloud-llms-health-test.git
+git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
 cd qvac-vs-cloud-llms-health-test
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-./scripts/setup_medpsy.sh   # una tantum: scarica Ollama + MedPsy-4B + embedding model
-./run.sh                    # avvia la dashboard su http://localhost:8501
+./scripts/setup_medpsy.sh
+./run.sh
 ```
 
-Nota: il modello GGUF di MedPsy (~2.7 GB) e i binari di Ollama **non** sono nel repo (sono in `.gitignore`) — li scarica `setup_medpsy.sh` la prima volta, su ogni macchina.
+I modelli GGUF **non** sono nel repo (`.gitignore`) — `setup_medpsy.sh` li scarica gratis.
+
+---
 
 ## Disclaimer
 

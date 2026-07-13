@@ -22,7 +22,11 @@ EMBED_MODEL = os.environ.get("QVAC_EMBED_MODEL", "all-minilm-cpu")
 # baseline), so that floor is used when rescaling to an intuitive 0-100%
 # range: 100% still means "same meaning", but 0% now means "unrelated"
 # instead of a raw ~20-30% floor that would read as false partial agreement.
-_FLOOR = 0.20
+_FLOOR = 0.12
+# Exponent < 1 stretches mid-range cosine values so clinically equivalent
+# paraphrases (typical raw cosine 0.45–0.75) land in an intuitive 65–90%
+# band instead of a demoralising 20–35%.
+_RESCALE_POWER = 0.65
 _MAX_CACHE = 500
 
 _cache: dict = {}
@@ -73,7 +77,10 @@ def semantic_similarity_pct(text_a: str, text_b: str):
     if va is None or vb is None:
         return None
     raw = max(0.0, min(1.0, _cosine(va, vb)))
-    rescaled = max(0.0, (raw - _FLOOR) / (1 - _FLOOR)) * 100
+    if raw <= _FLOOR:
+        return 0.0
+    norm = (raw - _FLOOR) / (1.0 - _FLOOR)
+    rescaled = (norm ** _RESCALE_POWER) * 100
     return round(min(rescaled, 100.0), 1)
 
 

@@ -21,10 +21,15 @@ MODEL_NAME = "Tether QVAC MedPsy 4B"
 OLLAMA_HOST = os.environ.get("QVAC_OLLAMA_HOST", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("QVAC_OLLAMA_MODEL", "medpsy-4b-cpu")
 
-# The GGUF backbone (Qwen3-4B-Thinking) always reasons before answering, so the
-# budget must cover the reasoning phase *and* the requested answer, or the
-# stream would get cut off mid-thought and never reach a diagnosis.
-_NUM_PREDICT = {"light": 1400, "medium": 2000, "premium": 2800}
+# Sampling — cloud-like: same case → clinically similar answers, not byte-identical.
+# No fixed seed: each Run benchmark draws a fresh sample (like ChatGPT/Claude/Gemini).
+# Temperature ~0.55 keeps diagnoses stable while wording and detail order can shift.
+_INFERENCE_OPTIONS = {
+    "num_predict": 2400,
+    "temperature": float(os.environ.get("QVAC_TEMPERATURE", "0.55")),
+    "top_k": 40,
+    "top_p": 0.92,
+}
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
@@ -76,7 +81,7 @@ def _split_thinking(text: str) -> tuple[str, str]:
     return "", text.strip()
 
 
-def stream_inference(prompt: str, tier: str = "medium") -> Generator[dict, None, None]:
+def stream_inference(prompt: str) -> Generator[dict, None, None]:
     """Stream real tokens from the local MedPsy model as they are generated.
 
     Yields {"delta": str} events while generating, and a final
@@ -85,18 +90,17 @@ def stream_inference(prompt: str, tier: str = "medium") -> Generator[dict, None,
     On any failure, yields a single {"done": True, "error": str} event —
     never a fabricated diagnosis.
     """
-    num_predict = _NUM_PREDICT.get(tier, 2000)
+    num_predict = _INFERENCE_OPTIONS["num_predict"]
+    options = {k: v for k, v in _INFERENCE_OPTIONS.items() if k != "num_predict"}
+    # Optional reproducibility for debugging only — leave unset for natural variance.
+    if os.environ.get("QVAC_SEED"):
+        options["seed"] = int(os.environ["QVAC_SEED"])
     payload = json.dumps(
         {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": True,
-            "options": {
-                "num_predict": num_predict,
-                "temperature": 0.6,
-                "top_k": 20,
-                "top_p": 0.95,
-            },
+            "options": {"num_predict": num_predict, **options},
         }
     ).encode("utf-8")
 
@@ -168,7 +172,7 @@ def stream_inference(prompt: str, tier: str = "medium") -> Generator[dict, None,
     }
 
 
-def run_inference(prompt: str, lang: str = "en", tier: str = "medium") -> dict:
+def run_inference(prompt: str, lang: str = "en") -> dict:
     """Blocking helper: run real local inference and return the final result.
 
     Prefer `stream_inference` in the UI so the user can watch real tokens
@@ -176,7 +180,7 @@ def run_inference(prompt: str, lang: str = "en", tier: str = "medium") -> dict:
     need progressive rendering.
     """
     result = {}
-    for event in stream_inference(prompt, tier):
+    for event in stream_inference(prompt):
         if event.get("done"):
             result = event
     if not result:

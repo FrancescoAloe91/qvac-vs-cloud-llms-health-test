@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 venv/
 data/wallet.json
+.session_rankings.json
+.case_snapshots.json
 .streamlit/secrets.toml
 .env
 

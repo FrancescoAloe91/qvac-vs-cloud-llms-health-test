@@ -1,9 +1,11 @@
 """KPI tables and diagnostic metrics."""
 
+from typing import Optional, Tuple
+
 import pandas as pd
 
 from lib.i18n import t
-from lib.tiers import MODEL_CONFIG, TIERS
+from lib.tiers import MODEL_CONFIG
 
 # Stima illustrativa (non misurata) del tempo medio richiesto dal flusso manuale
 # cloud: apertura sito, attesa caricamento, copia prompt, incolla, attesa risposta,
@@ -38,18 +40,15 @@ def clinical_grade_10(score_pct: float) -> float:
     return round(max(1.0, min(10.0, 1.0 + (score_pct / 100.0) * 9.0)), 1)
 
 
-def _blend_score(a: float, b: float, sem, weights=(0.35, 0.35, 0.3)) -> float:
-    """Blend two keyword-based metrics with an optional semantic metric.
+def _blend_score(a: float, b: float, sem, weights=(0.25, 0.25, 0.50)) -> float:
+    """Blend keyword metrics with semantic similarity for the final score.
 
-    Semantic similarity adds real value (it catches "same diagnosis,
-    different words" that pure keyword-overlap misses) but it is also the
-    single noisiest signal here: it is computed from one short extracted
-    snippet through a small local embedding model, so it is given a
-    supporting weight rather than the deciding one — a single
-    mis-extracted snippet should nudge the score, not single-handedly
-    collapse it while the two more robust, multi-item signals (reliability
-    and accuracy, both averaged over the *whole* differential) disagree.
-    Falls back to a plain 50/50 average when embeddings are missing.
+    Semantic similarity is the only signal that stays honest across
+    languages (QVAC in Italian vs. cloud in English) and across verbosity
+    levels (a terse Gemini line vs. a thorough Claude paragraph saying the
+    same thing). Keyword overlap still contributes, but at equal weight to
+    each other and below semantic — otherwise thorough, correct answers
+    from stronger models get crushed by formatting/length differences.
     """
     if sem is None:
         return round((a + b) / 2, 1)
@@ -80,9 +79,11 @@ def _L(lang: str) -> dict:
         "rank_clinical": t("cols.clinical_rank", lang),
         "rank": t("cols.rank", lang),
         "score_final": t("cols.final_score", lang),
-        "rel_short": t("cols.reliability_short", lang),
-        "acc_cons_short": t("cols.accuracy_consensus_short", lang),
-        "sem_short": t("cols.semantic_short", lang),
+        "rel_short": t("cols.clinical_summary_short", lang),
+        "acc_cons_short": t("cols.diagnosis_match_short", lang),
+        "sem_short": t("cols.plan_next_steps_short", lang),
+        "urg_dim_short": t("cols.urgency_agreement_short", lang),
+        "score_cons_rescaled": t("cols.consensus_score_rescaled", lang),
         "score_cons_short": t("cols.consensus_score_short", lang),
         "acc_clin_short": t("cols.clinical_accuracy", lang),
         "ddx_short": t("cols.ddx_coverage_short", lang),
@@ -94,9 +95,8 @@ def _L(lang: str) -> dict:
     }
 
 
-def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> pd.DataFrame:
+def build_performance_table(results: dict, lang: str = "en") -> pd.DataFrame:
     L = _L(lang)
-    tier_label = TIERS[tier_key].label
     rows = []
     for key, cfg in MODEL_CONFIG.items():
         data = results.get(key, {})
@@ -105,9 +105,6 @@ def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> p
             rows.append(
                 {
                     L["model"]: cfg["name"],
-                    # No tier concept applies to cloud sites — the depth
-                    # selector only ever changes QVAC's own prompt.
-                    L["tier_req"]: "—",
                     "TTFT (s)": "—",
                     "TPS": "—",
                     L["latency"]: "—",
@@ -120,10 +117,6 @@ def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> p
             rows.append(
                 {
                     L["model"]: cfg["name"],
-                    # QVAC is the only model the depth selector actually drives.
-                    L["tier_req"]: f"{tier_label} ({L['local']})",
-                    # Cast to str: this column also holds "—" for cloud rows, and a
-                    # mixed float/str object column breaks pandas->Arrow serialization.
                     "TTFT (s)": str(stats.get("ttft_s") or "—"),
                     "TPS": str(stats.get("tps") or stats.get("tokens_per_second") or "—"),
                     L["latency"]: str(stats.get("latency_s") or "—"),
@@ -135,69 +128,66 @@ def build_performance_table(results: dict, tier_key: str, lang: str = "en") -> p
     return pd.DataFrame(rows)
 
 
-def build_consensus_table(compare: dict, tier_key: str, model_keys: list, lang: str = "en") -> pd.DataFrame:
+TABLE_MODEL_SHORT = {
+    "qvac": "QVAC",
+    "chatgpt": "ChatGPT",
+    "claude": "Claude",
+    "gemini": "Gemini",
+}
+
+
+def build_consensus_table(compare: dict, model_keys: list, lang: str = "en") -> pd.DataFrame:
+    """Full results table with dual ranking columns when gold standard is active."""
     L = _L(lang)
-    tier_label = TIERS[tier_key].label
-    sem_scores = compare.get("semantic_similarity", {}) or {}
-    sem_available = compare.get("semantic_available", False)
-    rows = []
-    for key in model_keys:
-        cfg = MODEL_CONFIG.get(key, {})
-        if not cfg:
-            continue
-        rel = compare.get("reliability", {}).get(key, 0)
-        acc = compare.get("accuracy_consensus", {}).get(key, 0)
-        sem = sem_scores.get(key) if sem_available else None
-        score = _blend_score(rel, acc, sem)
-        row = {
-            L["model"]: cfg["name"],
-            # The depth selector only drives QVAC; cloud sites get one
-            # untiered prompt no matter what, so "Tier" doesn't apply to them.
-            L["tier"]: f"{tier_label} ({L['local']})" if not cfg["cloud"] else "—",
-            L["reliability"]: rel,
-            L["acc_consensus"]: acc,
-        }
-        if sem_available:
-            row[L["sem_short"]] = str(sem) if sem is not None else "—"
-        row[L["score_consensus"]] = score
-        row[L["privacy"]] = privacy_score(cfg["cloud"])
-        rows.append(row)
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(L["score_consensus"], ascending=False)
-        df[L["rank_consensus"]] = range(1, len(df) + 1)
-    return df
+    use_gold = compare.get("mode") == "gold_standard" and compare.get("gold")
+    df = build_unified_ranking(compare, model_keys, lang)
+    if df.empty:
+        return df
+
+    df[L["model"]] = [
+        TABLE_MODEL_SHORT.get(k, MODEL_CONFIG.get(k, {}).get("name", k))
+        for k in df["key"]
+    ]
+
+    cols = [
+        L["model"],
+        L["acc_cons_short"],
+        L["sem_short"],
+        L["rel_short"],
+        L["urg_dim_short"],
+        L["score_cons_rescaled"],
+        L["rank_consensus"],
+    ]
+    if use_gold:
+        cols += [L["score_clin_short"], L["rank_clinical"], L["grade_10"]]
+    return df[cols]
 
 
-def build_gold_table(compare: dict, tier_key: str, model_keys: list, lang: str = "en") -> pd.DataFrame:
+def _gold_dim(gold: dict, field: str, key: str):
+    val = (gold.get(field) or {}).get(key)
+    return val if val is not None else "—"
+
+
+def build_gold_table(compare: dict, model_keys: list, lang: str = "en") -> pd.DataFrame:
     if not compare.get("gold"):
         return pd.DataFrame()
 
     L = _L(lang)
-    tier_label = TIERS[tier_key].label
     gold = compare["gold"]
-    sem_available = gold.get("semantic_available", False)
-    sem_scores = gold.get("semantic_accuracy", {}) or {}
     rows = []
     for key in model_keys:
         cfg = MODEL_CONFIG.get(key, {})
         if not cfg:
             continue
-        acc_p = gold["accuracy_primary"].get(key, 0)
-        cov = gold["coverage_ddx"].get(key, 0)
-        sem = sem_scores.get(key) if sem_available else None
-        score = _blend_score(acc_p, cov, sem, weights=(0.35, 0.35, 0.3))
+        score = _clinical_gold_score(gold, key)
         row = {
             L["model"]: cfg["name"],
-            L["tier"]: f"{tier_label} ({L['local']})" if not cfg["cloud"] else "—",
-            L["acc_primary"]: acc_p,
-            L["ddx_cov"]: cov,
+            L["acc_primary"]: _gold_dim(gold, "semantic_diagnosis", key),
+            L["ddx_cov"]: _gold_dim(gold, "semantic_management", key),
+            L["sem_clin_short"]: _gold_dim(gold, "semantic_urgency", key),
+            L["score_clinical"]: score,
+            L["grade_10"]: clinical_grade_10(score),
         }
-        if sem_available:
-            row[L["sem_clin_short"]] = str(sem) if sem is not None else "—"
-        row[L["score_clinical"]] = score
-        row[L["grade_10"]] = clinical_grade_10(score)
-        row[L["privacy"]] = privacy_score(cfg["cloud"])
         rows.append(row)
     df = pd.DataFrame(rows)
     if not df.empty:
@@ -206,60 +196,122 @@ def build_gold_table(compare: dict, tier_key: str, model_keys: list, lang: str =
     return df
 
 
+def rescale_relative(scores: dict) -> dict:
+    """Rescale so the best model in the group = 100%, others proportional.
+
+    Used for the *consensus* ranking when there is no ground truth: the
+    leader always reads as 100% so the chart is intuitive, and everyone
+    else scales down by how far they are from the leader — not by an
+    arbitrary absolute ceiling.
+    """
+    if not scores:
+        return {}
+    peak = max(scores.values())
+    if peak <= 0:
+        return {k: 0.0 for k in scores}
+    return {k: round(v / peak * 100, 1) for k, v in scores.items()}
+
+
+def _clinical_gold_score(gold: dict, key: str) -> float:
+    """Score clinico assoluto vs riferimento — solo significato, non parole uguali."""
+    composite = (gold.get("semantic_composite") or {}).get(key)
+    if composite is not None and gold.get("semantic_available"):
+        return float(composite)
+
+    sem = gold.get("semantic_accuracy", {}).get(key) if gold.get("semantic_available") else None
+    if sem is not None:
+        return float(sem)
+
+    acc_p = gold["accuracy_primary"].get(key, 0)
+    cov = gold["coverage_ddx"].get(key, 0)
+    return round((acc_p + cov) / 2, 1)
+
+
+def _consensus_score(compare: dict, key: str, rel: float, acc: float, sem) -> float:
+    """Prefer the intelligent clinical composite when embeddings are available."""
+    composite = compare.get("clinical_composite") or {}
+    if key in composite and compare.get("semantic_available"):
+        return composite[key]
+    return _blend_score(rel, acc, sem)
+
+
 def build_unified_ranking(compare: dict, model_keys: list, lang: str = "en") -> pd.DataFrame:
+    """Dual ranking: consensus (relative, best=100%) and clinical vs reference (absolute)."""
     L = _L(lang)
     use_gold = compare.get("mode") == "gold_standard" and compare.get("gold")
-    sem_scores = compare.get("semantic_similarity", {}) or {}
-    sem_available = compare.get("semantic_available", False)
     rows = []
+
+    raw_cons = {}
+    for key in model_keys:
+        cfg = MODEL_CONFIG.get(key, {})
+        if not cfg:
+            continue
+        dims = compare.get("clinical_dimensions") or {}
+        dx = dims.get("diagnosis", {}).get(key)
+        plan = dims.get("management", {}).get(key)
+        summary = dims.get("summary", {}).get(key)
+        urg = dims.get("urgency", {}).get(key)
+        raw_cons[key] = _consensus_score(compare, key, summary or 0, dx or 0, plan)
+
+    rescaled_cons = rescale_relative(raw_cons)
 
     for key in model_keys:
         cfg = MODEL_CONFIG.get(key, {})
         if not cfg:
             continue
-
-        rel = compare.get("reliability", {}).get(key, 0)
-        acc_c = compare.get("accuracy_consensus", {}).get(key, 0)
-        sem = sem_scores.get(key) if sem_available else None
-        score_cons = _blend_score(rel, acc_c, sem)
-        priv = privacy_score(cfg["cloud"])
+        dims = compare.get("clinical_dimensions") or {}
+        dx = dims.get("diagnosis", {}).get(key)
+        plan = dims.get("management", {}).get(key)
+        summary = dims.get("summary", {}).get(key)
+        urg = dims.get("urgency", {}).get(key)
 
         row = {
             "key": key,
             L["model"]: cfg["name"],
-            L["rel_short"]: rel,
-            L["acc_cons_short"]: acc_c,
-            L["sem_short"]: sem,
-            L["score_cons_short"]: score_cons,
-            L["privacy"]: priv,
+            L["acc_cons_short"]: dx if dx is not None else "—",
+            L["sem_short"]: plan if plan is not None else "—",
+            L["rel_short"]: summary if summary is not None else "—",
+            L["urg_dim_short"]: urg if urg is not None else "—",
+            L["score_cons_rescaled"]: rescaled_cons.get(key, 0),
+            L["privacy"]: privacy_score(cfg["cloud"]),
         }
 
         if use_gold:
             g = compare["gold"]
-            acc_g = g["accuracy_primary"].get(key, 0)
-            cov_g = g["coverage_ddx"].get(key, 0)
-            sem_g = g.get("semantic_accuracy", {}).get(key) if g.get("semantic_available") else None
-            score_gold = _blend_score(acc_g, cov_g, sem_g, weights=(0.35, 0.35, 0.3))
-            row[L["acc_clin_short"]] = acc_g
-            row[L["ddx_short"]] = cov_g
-            row[L["sem_clin_short"]] = sem_g
+            score_gold = _clinical_gold_score(g, key)
+            row[L["acc_clin_short"]] = _gold_dim(g, "semantic_diagnosis", key)
+            row[L["ddx_short"]] = _gold_dim(g, "semantic_management", key)
+            row[L["sem_clin_short"]] = _gold_dim(g, "semantic_urgency", key)
             row[L["score_clin_short"]] = score_gold
-            row[L["score_final"]] = round((score_cons + score_gold) / 2, 1)
             row[L["grade_10"]] = clinical_grade_10(score_gold)
         else:
             row[L["acc_clin_short"]] = None
             row[L["ddx_short"]] = None
             row[L["sem_clin_short"]] = None
             row[L["score_clin_short"]] = None
-            row[L["score_final"]] = score_cons
             row[L["grade_10"]] = None
 
         rows.append(row)
 
     df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(L["score_final"], ascending=False).reset_index(drop=True)
-        df[L["rank"]] = range(1, len(df) + 1)
+    if df.empty:
+        return df
+
+    # Independent ranks — a model can be #1 clinically and #3 on consensus.
+    cons_order = df.sort_values(L["score_cons_rescaled"], ascending=False).reset_index(drop=True)
+    cons_ranks = {cons_order.loc[i, "key"]: i + 1 for i in range(len(cons_order))}
+    df[L["rank_consensus"]] = df["key"].map(cons_ranks)
+
+    if use_gold:
+        clin_order = df.sort_values(L["score_clin_short"], ascending=False).reset_index(drop=True)
+        clin_ranks = {clin_order.loc[i, "key"]: i + 1 for i in range(len(clin_order))}
+        df[L["rank_clinical"]] = df["key"].map(clin_ranks)
+    else:
+        df[L["rank_clinical"]] = None
+
+    # Default table sort: clinical first when gold is available, else consensus.
+    sort_col = L["score_clin_short"] if use_gold else L["score_cons_rescaled"]
+    df = df.sort_values(sort_col, ascending=False).reset_index(drop=True)
     return df
 
 
@@ -298,27 +350,272 @@ def time_saved_seconds(qvac_latency_s) -> float:
 
 def build_session_entry(
     case_label: str,
-    tier_label: str,
+    case_id: Optional[str],
     ranking_df: pd.DataFrame,
     compare: dict,
     lang: str = "en",
 ) -> dict:
-    """Crea uno snapshot compatto del round corrente per la session leaderboard."""
+    """Snapshot of one benchmarked case for the multi-case session story."""
     L = _L(lang)
     if ranking_df.empty:
         return {}
-    winner_row = ranking_df.iloc[0]
-    return {
+    use_gold = compare.get("mode") == "gold_standard" and compare.get("gold")
+
+    scores_consensus = {}
+    ranks_consensus = {}
+    scores_clinical = {}
+    ranks_clinical = {}
+    for _, row in ranking_df.iterrows():
+        key = row["key"]
+        scores_consensus[key] = float(row[L["score_cons_rescaled"]])
+        ranks_consensus[key] = int(row[L["rank_consensus"]])
+        if use_gold and row.get(L["score_clin_short"]) is not None:
+            scores_clinical[key] = float(row[L["score_clin_short"]])
+            ranks_clinical[key] = int(row[L["rank_clinical"]])
+
+    winner_cons = ranking_df[ranking_df[L["rank_consensus"]] == 1].iloc[0]
+    entry = {
         "case": case_label,
-        "tier": tier_label,
-        "winner_key": winner_row["key"],
-        "winner_name": winner_row[L["model"]],
-        "winner_score": winner_row[L["score_final"]],
-        "mode": compare.get("mode", "consensus"),
-        "scores": {
-            row["key"]: row[L["score_final"]] for _, row in ranking_df.iterrows()
-        },
+        "case_id": case_id,
+        "mode": "gold_standard" if use_gold else "consensus",
+        "scores_consensus": scores_consensus,
+        "ranks_consensus": ranks_consensus,
+        "winner_consensus_key": winner_cons["key"],
+        "winner_consensus_name": winner_cons[L["model"]],
+        "winner_consensus_score": float(winner_cons[L["score_cons_rescaled"]]),
     }
+    if use_gold and scores_clinical:
+        winner_clin = ranking_df[ranking_df[L["rank_clinical"]] == 1].iloc[0]
+        entry["scores_clinical"] = scores_clinical
+        entry["ranks_clinical"] = ranks_clinical
+        entry["winner_clinical_key"] = winner_clin["key"]
+        entry["winner_clinical_name"] = winner_clin[L["model"]]
+        entry["winner_clinical_score"] = float(winner_clin[L["score_clin_short"]])
+        entry["winner_key"] = entry["winner_clinical_key"]
+        entry["winner_name"] = entry["winner_clinical_name"]
+        entry["winner_score"] = entry["winner_clinical_score"]
+        entry["scores"] = scores_clinical
+    else:
+        entry["winner_key"] = entry["winner_consensus_key"]
+        entry["winner_name"] = entry["winner_consensus_name"]
+        entry["winner_score"] = entry["winner_consensus_score"]
+        entry["scores"] = scores_consensus
+    return entry
+
+
+def _entry_scores(entry: dict, kind: str = "consensus") -> dict:
+    """Read scores from new or legacy session entries."""
+    if kind == "clinical":
+        return entry.get("scores_clinical") or (
+            entry.get("scores", {}) if entry.get("mode") == "gold_standard" else {}
+        )
+    return entry.get("scores_consensus") or entry.get("scores", {})
+
+
+def build_session_history_table(history: list, lang: str = "en") -> pd.DataFrame:
+    """One row per saved case — for the session audit trail."""
+    if not history:
+        return pd.DataFrame()
+    L = _L(lang)
+    rows = []
+    for i, entry in enumerate(history, 1):
+        cons = _entry_scores(entry, "consensus")
+        clin = _entry_scores(entry, "clinical")
+        best_cons_key = max(cons, key=cons.get) if cons else None
+        best_clin_key = max(clin, key=clin.get) if clin else None
+        row = {
+            t("session.col_round", lang): i,
+            t("session.col_case", lang): entry.get("case", "—"),
+            t("session.col_mode", lang): t(
+                "session.mode_gold" if entry.get("mode") == "gold_standard" else "session.mode_consensus",
+                lang,
+            ),
+            t("session.col_best_consensus", lang): (
+                f"{TABLE_MODEL_SHORT.get(best_cons_key, best_cons_key)} ({cons[best_cons_key]:.1f}%)"
+                if best_cons_key
+                else "—"
+            ),
+        }
+        if clin:
+            row[t("session.col_best_clinical", lang)] = (
+                f"{TABLE_MODEL_SHORT.get(best_clin_key, best_clin_key)} ({clin[best_clin_key]:.1f}%)"
+                if best_clin_key
+                else "—"
+            )
+        saved_at = entry.get("saved_at")
+        if saved_at:
+            from lib.session_store import format_saved_at
+
+            row[t("session.col_saved_at", lang)] = t(
+                "sidebar.slot_saved_at", lang, time=format_saved_at(saved_at, lang)
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def build_final_consensus_average(history: list, lang: str = "en") -> pd.DataFrame:
+    """Arithmetic mean of consensus scores across non-gold saved cases (cases 1–4)."""
+    L = _L(lang)
+    consensus_entries = [e for e in history if e.get("mode") != "gold_standard"]
+    if not consensus_entries:
+        return pd.DataFrame()
+
+    totals: dict = {}
+    counts: dict = {}
+    for entry in consensus_entries:
+        for key, score in _entry_scores(entry, "consensus").items():
+            totals[key] = totals.get(key, 0.0) + float(score or 0)
+            counts[key] = counts.get(key, 0) + 1
+
+    avg_scores = {key: round(totals[key] / counts[key], 1) for key in totals}
+    rescaled = rescale_relative(avg_scores)
+
+    rows = []
+    for key, score in rescaled.items():
+        cfg = MODEL_CONFIG.get(key, {})
+        rows.append(
+            {
+                "key": key,
+                L["model"]: TABLE_MODEL_SHORT.get(key, cfg.get("name", key)),
+                L["score_cons_rescaled"]: score,
+            }
+        )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df = df.sort_values(L["score_cons_rescaled"], ascending=False).reset_index(drop=True)
+    df[L["rank_consensus"]] = range(1, len(df) + 1)
+    return df
+
+
+def build_averaged_entry_from_runs(runs: list) -> dict:
+    """Entry sintetica con score mediati (consenso + clinico) per tab sessione / finale."""
+    entries = [r.get("entry") for r in runs if r.get("entry")]
+    if not entries:
+        return {}
+    base = dict(entries[0])
+    base["mode"] = entries[0].get("mode", "consensus")
+    base["run_count"] = len(entries)
+
+    for kind, score_key, rank_key in (
+        ("consensus", "scores_consensus", "ranks_consensus"),
+        ("clinical", "scores_clinical", "ranks_clinical"),
+    ):
+        totals: dict = {}
+        counts: dict = {}
+        for entry in entries:
+            for key, score in _entry_scores(entry, kind).items():
+                totals[key] = totals.get(key, 0.0) + float(score or 0)
+                counts[key] = counts.get(key, 0) + 1
+        if totals:
+            avg_scores = {k: round(totals[k] / counts[k], 1) for k in totals}
+            base[score_key] = avg_scores
+            sorted_keys = sorted(avg_scores, key=avg_scores.get, reverse=True)
+            base[rank_key] = {k: i + 1 for i, k in enumerate(sorted_keys)}
+            if kind == "consensus":
+                best = sorted_keys[0]
+                base["winner_consensus_key"] = best
+                base["winner_consensus_score"] = avg_scores[best]
+            elif kind == "clinical":
+                best = sorted_keys[0]
+                base["winner_clinical_key"] = best
+                base["winner_clinical_score"] = avg_scores[best]
+
+    if base.get("scores_clinical"):
+        base["scores"] = base["scores_clinical"]
+        base["winner_key"] = base.get("winner_clinical_key")
+        base["winner_score"] = base.get("winner_clinical_score")
+    elif base.get("scores_consensus"):
+        base["scores"] = base["scores_consensus"]
+        base["winner_key"] = base.get("winner_consensus_key")
+        base["winner_score"] = base.get("winner_consensus_score")
+    return base
+
+
+def build_averaged_ranking_from_snapshots(runs: list, lang: str = "en") -> pd.DataFrame:
+    """Media per modello delle colonne score su più run dello stesso caso."""
+    from lib.session_store import ranking_df_from_snapshot
+
+    dfs = [ranking_df_from_snapshot(r) for r in runs]
+    dfs = [d for d in dfs if not d.empty]
+    if not dfs:
+        return pd.DataFrame()
+    if len(dfs) == 1:
+        return dfs[0].copy()
+
+    L = _L(lang)
+    score_cols = [c for c in (L["score_cons_rescaled"], L["score_clin_short"]) if c in dfs[0].columns]
+    rows = []
+    for key in dfs[0]["key"].tolist():
+        base = dfs[0][dfs[0]["key"] == key].iloc[0].to_dict()
+        for col in score_cols:
+            vals = []
+            for df in dfs:
+                sub = df[df["key"] == key]
+                if sub.empty:
+                    continue
+                val = sub[col].iloc[0]
+                if val is None or val == "—":
+                    continue
+                try:
+                    vals.append(float(val))
+                except (TypeError, ValueError):
+                    pass
+            if vals:
+                base[col] = round(sum(vals) / len(vals), 1)
+        rows.append(base)
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values(L["score_cons_rescaled"], ascending=False).reset_index(drop=True)
+    df[L["rank_consensus"]] = range(1, len(df) + 1)
+    if L["score_clin_short"] in df.columns:
+        clin = df[df[L["score_clin_short"].notna()]].sort_values(
+            L["score_clin_short"], ascending=False
+        )
+        rank_map = {row["key"]: i + 1 for i, (_, row) in enumerate(clin.iterrows())}
+        df[L["rank_clinical"]] = df["key"].map(rank_map)
+    return df
+
+
+def build_final_gold_ranking(history: list, lang: str = "en") -> Tuple[pd.DataFrame, str]:
+    """Ranking clinico vs diagnosi certa — media se più entry gold."""
+    return build_final_gold_ranking_average(
+        [e for e in history if e.get("mode") == "gold_standard"], lang
+    )
+
+
+def build_final_gold_ranking_average(entries: list, lang: str = "en") -> Tuple[pd.DataFrame, str]:
+    """Media aritmetica score clinici assoluti su N run gold (es. caso 5 × 4)."""
+    L = _L(lang)
+    if not entries:
+        return pd.DataFrame(), ""
+
+    totals: dict = {}
+    counts: dict = {}
+    for entry in entries:
+        for key, score in _entry_scores(entry, "clinical").items():
+            totals[key] = totals.get(key, 0.0) + float(score or 0)
+            counts[key] = counts.get(key, 0) + 1
+
+    rows = []
+    for key, total in totals.items():
+        cfg = MODEL_CONFIG.get(key, {})
+        rows.append(
+            {
+                "key": key,
+                L["model"]: TABLE_MODEL_SHORT.get(key, cfg.get("name", key)),
+                L["score_clin_short"]: round(total / counts[key], 1),
+            }
+        )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df, entries[0].get("case", "")
+    df = df.sort_values(L["score_clin_short"], ascending=False).reset_index(drop=True)
+    df[L["rank_clinical"]] = range(1, len(df) + 1)
+    case_label = entries[0].get("case", "")
+    if len(entries) > 1:
+        case_label = f"{case_label} (avg ×{len(entries)})"
+    return df, case_label
 
 
 def _verdict_key(score: float) -> str:
@@ -358,15 +655,29 @@ def build_ranking_narrative(
     for _, row in ranking_df.iterrows():
         key = row["key"]
         cfg = MODEL_CONFIG.get(key, {})
-        rank = int(row[L["rank"]])
-        score = row[L["score_final"]]
+        rank_cons = int(row[L["rank_consensus"]])
+        score_cons = row[L["score_cons_rescaled"]]
+        rank_clin = int(row[L["rank_clinical"]]) if use_gold and row.get(L["rank_clinical"]) else None
+        score_clin = row.get(L["score_clin_short"])
         bullets = []
+
+        if use_gold and rank_clin is not None:
+            bullets.append(
+                t(
+                    "narrative.dual_ranks",
+                    lang,
+                    rank_cons=rank_cons,
+                    rank_clin=rank_clin,
+                    score_cons=score_cons,
+                    score_clin=score_clin,
+                )
+            )
 
         sem = row.get(L["sem_short"])
         sem_clause = t("narrative.sem_clause", lang, sem=sem) if sem is not None else ""
-        bullets.append(t(_verdict_key(score), lang, score=score, sem_clause=sem_clause))
+        bullets.append(t(_verdict_key(score_cons), lang, score=score_cons, sem_clause=sem_clause))
 
-        if use_gold and row.get(L["acc_clin_short"]) is not None:
+        if use_gold and score_clin is not None:
             sem_g = row.get(L["sem_clin_short"])
             sem_g_clause = t("narrative.sem_clause", lang, sem=sem_g) if sem_g is not None else ""
             bullets.append(
@@ -377,6 +688,9 @@ def build_ranking_narrative(
                     cov=row[L["ddx_short"]],
                     sem_clause=sem_g_clause,
                 )
+            )
+            bullets.append(
+                t("narrative.clinical_score", lang, score=score_clin, rank=rank_clin)
             )
 
         u = compare.get("urgency", {}).get(key, {})
@@ -398,21 +712,29 @@ def build_ranking_narrative(
         else:
             bullets.append(t("narrative.privacy_local", lang))
 
-        if rank == 1:
-            bullets.append(t("narrative.top", lang))
-        elif rank == n and n > 1:
-            bullets.append(t("narrative.bottom", lang))
+        if rank_cons == 1:
+            bullets.append(t("narrative.top_consensus", lang))
+        elif rank_cons == n and n > 1:
+            bullets.append(t("narrative.bottom_consensus", lang))
+        if use_gold and rank_clin == 1:
+            bullets.append(t("narrative.top_clinical", lang))
+        elif use_gold and rank_clin == n and n > 1:
+            bullets.append(t("narrative.bottom_clinical", lang))
+
+        display_rank = rank_clin if use_gold else rank_cons
+        display_score = score_clin if use_gold else score_cons
+        tone = "strength" if display_rank == 1 else ("watch" if display_rank == n and n > 1 else "neutral")
 
         items.append(
             {
                 "key": key,
-                "rank": rank,
+                "rank": display_rank,
                 "name": row[L["model"]],
                 "icon": cfg.get("icon", "🔹"),
                 "color": cfg.get("color", "#94a3b8"),
-                "score": row[L["score_final"]],
+                "score": display_score,
                 "bullets": bullets,
-                "tone": "strength" if rank == 1 else ("watch" if rank == n and n > 1 else "neutral"),
+                "tone": tone,
             }
         )
 
@@ -488,25 +810,21 @@ def build_score_explanations(
         }
 
         if gold:
-            acc_g = gold["accuracy_primary"].get(key, 0.0)
-            cov_g = gold["coverage_ddx"].get(key, 0.0)
-            sem_g_available = gold.get("semantic_available", False)
-            sem_g = gold.get("semantic_accuracy", {}).get(key) if sem_g_available else None
-            score_gold = _blend_score(acc_g, cov_g, sem_g, weights=(0.35, 0.35, 0.3))
+            score_gold = _clinical_gold_score(gold, key)
             entry["gold"] = {
-                "accuracy_primary": acc_g,
-                "coverage_ddx": cov_g,
-                "semantic": sem_g,
-                "semantic_available": sem_g_available,
+                "accuracy_primary": _gold_dim(gold, "semantic_diagnosis", key),
+                "coverage_ddx": _gold_dim(gold, "semantic_management", key),
+                "semantic": _gold_dim(gold, "semantic_urgency", key),
+                "semantic_available": gold.get("semantic_available", False),
                 "score": score_gold,
                 "grade_10": clinical_grade_10(score_gold),
                 "gold_keywords": gold.get("gold_keywords", [])[:10],
             }
-            entry["final_score"] = round((final_cons + score_gold) / 2, 1)
+            entry["final_score"] = score_gold
 
         items.append(entry)
 
-    items.sort(key=lambda e: e["final_score"], reverse=True)
+    items.sort(key=lambda e: e["consensus_score"] if not gold else e.get("gold", {}).get("score", 0), reverse=True)
     return items
 
 
@@ -520,8 +838,10 @@ def build_leaderboard_df(history: list, lang: str = "en") -> pd.DataFrame:
     totals: dict = {}
     counts: dict = {}
     for entry in history:
-        wins[entry["winner_key"]] = wins.get(entry["winner_key"], 0) + 1
-        for key, score in entry.get("scores", {}).items():
+        wins[entry.get("winner_consensus_key") or entry.get("winner_key")] = (
+            wins.get(entry.get("winner_consensus_key") or entry.get("winner_key"), 0) + 1
+        )
+        for key, score in _entry_scores(entry, "consensus").items():
             totals[key] = totals.get(key, 0.0) + (score or 0.0)
             counts[key] = counts.get(key, 0) + 1
 

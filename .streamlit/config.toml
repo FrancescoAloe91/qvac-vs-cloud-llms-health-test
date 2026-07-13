@@ -1,6 +1,5 @@
 [browser]
 gatherUsageStats = false
-serverAddress = "localhost"
 
 [server]
 headless = true
@@ -8,10 +7,11 @@ showEmailPrompt = false
 port = 8501
 runOnSave = true
 enableCORS = false
-enableXsrfProtection = false
+enableXsrfProtection = true
 
 [client]
 showErrorDetails = true
+toolbarMode = "viewer"
 
 [theme]
 base = "dark"
