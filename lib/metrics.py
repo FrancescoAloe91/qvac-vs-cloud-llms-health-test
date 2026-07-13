@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
+from lib.cloud_tiers import display_model_name
 from lib.i18n import t
 from lib.tiers import MODEL_CONFIG
 
@@ -136,7 +137,9 @@ TABLE_MODEL_SHORT = {
 }
 
 
-def build_consensus_table(compare: dict, model_keys: list, lang: str = "en") -> pd.DataFrame:
+def build_consensus_table(
+    compare: dict, model_keys: list, lang: str = "en", tier_labels: dict | None = None
+) -> pd.DataFrame:
     """Full results table with dual ranking columns when gold standard is active."""
     L = _L(lang)
     use_gold = compare.get("mode") == "gold_standard" and compare.get("gold")
@@ -145,7 +148,7 @@ def build_consensus_table(compare: dict, model_keys: list, lang: str = "en") -> 
         return df
 
     df[L["model"]] = [
-        TABLE_MODEL_SHORT.get(k, MODEL_CONFIG.get(k, {}).get("name", k))
+        display_model_name(k, tier_labels) if tier_labels else TABLE_MODEL_SHORT.get(k, MODEL_CONFIG.get(k, {}).get("name", k))
         for k in df["key"]
     ]
 

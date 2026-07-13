@@ -3,6 +3,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from lib.cloud_tiers import short_chart_label
 from lib.i18n import t
 from lib.metrics import TABLE_MODEL_SHORT, URGENCY_META, _L
 from lib.tiers import MODEL_CONFIG
@@ -28,7 +29,9 @@ PLOT_BG = "#161b26"
 GRID = "#2a3142"
 
 
-def _chart_model_label(key: str, full_name: str) -> str:
+def _chart_model_label(key: str, full_name: str, tier_labels: dict | None = None) -> str:
+    if tier_labels is not None:
+        return short_chart_label(key, tier_labels)
     return TABLE_MODEL_SHORT.get(key, full_name)
 
 
@@ -117,11 +120,13 @@ def fig_ranking_bars(ranking_df, use_gold: bool, lang: str = "en", height: int =
     return fig_consensus_ranking_bars(ranking_df, lang, height)
 
 
-def fig_consensus_ranking_bars(ranking_df, lang: str = "en", height: int = 260) -> go.Figure:
+def fig_consensus_ranking_bars(
+    ranking_df, lang: str = "en", height: int = 260, tier_labels: dict | None = None
+) -> go.Figure:
     """Consensus ranking: best model in the group = 100%, others scale down."""
     L = _L(lang)
     models = [
-        _chart_model_label(row["key"], row[L["model"]])
+        _chart_model_label(row["key"], row[L["model"]], tier_labels)
         for _, row in ranking_df.iterrows()
     ]
     colors = [MODEL_COLORS.get(k, "#94a3b8") for k in ranking_df["key"]]
@@ -139,19 +144,21 @@ def fig_consensus_ranking_bars(ranking_df, lang: str = "en", height: int = 260) 
         )
     )
     layout = _base_layout(t("chart.bars_consensus", lang), height=height)
-    layout["margin"] = dict(l=40, r=60, t=60, b=30)
+    layout["margin"] = dict(l=40, r=72, t=60, b=30)
     layout["xaxis"] = dict(range=[0, 110], title=t("chart.score_pct", lang))
     fig.update_layout(**layout)
     fig.update_yaxes(autorange="reversed")
     return fig
 
 
-def fig_clinical_ranking_bars(ranking_df, lang: str = "en", height: int = 260) -> go.Figure:
+def fig_clinical_ranking_bars(
+    ranking_df, lang: str = "en", height: int = 260, tier_labels: dict | None = None
+) -> go.Figure:
     """Clinical ranking vs. confirmed diagnosis — absolute % (100% = perfect match with reference)."""
     L = _L(lang)
     score_col = L["score_clin_short"]
     models = [
-        _chart_model_label(row["key"], row[L["model"]])
+        _chart_model_label(row["key"], row[L["model"]], tier_labels)
         for _, row in ranking_df.iterrows()
     ]
     fig = go.Figure(
@@ -168,7 +175,7 @@ def fig_clinical_ranking_bars(ranking_df, lang: str = "en", height: int = 260) -
         )
     )
     layout = _base_layout(t("chart.bars_clinical", lang), height=height)
-    layout["margin"] = dict(l=40, r=60, t=60, b=30)
+    layout["margin"] = dict(l=40, r=72, t=60, b=30)
     layout["xaxis"] = dict(range=[0, 110], title=t("chart.score_pct", lang))
     fig.update_layout(**layout)
     fig.update_yaxes(autorange="reversed")
@@ -204,28 +211,47 @@ def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_ava
     return fig
 
 
-def fig_privacy_gauges(ranking_df, lang: str = "en", height: int = 280) -> go.Figure:
-    """Gauge per modello: 0% cloud → 100% on-device. Layout manuale per evitare sovrapposizioni."""
+def fig_privacy_gauges(
+    ranking_df, lang: str = "en", height: int = 300, tier_labels: dict | None = None
+) -> go.Figure:
+    """Gauge per modello: 0% cloud → 100% on-device. 2×2 grid + label sotto per evitare tagli."""
     L = _L(lang)
-    n = max(len(ranking_df), 1)
-    pad = 0.04
-    slot = (1.0 - pad * (n + 1)) / n
+    rows = list(ranking_df.iterrows())
+    n = max(len(rows), 1)
+    cols = 2 if n > 2 else n
+    rows_n = (n + cols - 1) // cols
     fig = go.Figure()
-    for i, (_, row) in enumerate(ranking_df.iterrows()):
+    annotations = []
+
+    x_gap, y_gap = 0.06, 0.08
+    cell_w = (1.0 - x_gap * (cols + 1)) / cols
+    cell_h = (1.0 - y_gap * (rows_n + 1)) / rows_n
+
+    for i, (_, row) in enumerate(rows):
         key = row["key"]
         color = MODEL_COLORS.get(key, "#94a3b8")
-        label = _chart_model_label(key, row[L["model"]])
-        x0 = pad + i * (slot + pad)
-        x1 = x0 + slot
+        label = _chart_model_label(key, row[L["model"]], tier_labels)
+        col_i = i % cols
+        row_i = i // cols
+        x0 = x_gap + col_i * (cell_w + x_gap)
+        x1 = x0 + cell_w
+        y1 = 1.0 - y_gap - row_i * (cell_h + y_gap)
+        y0 = y1 - cell_h
+        # Gauge body in upper ~72% of cell; number centered; label as annotation below.
+        gauge_y0 = y0 + cell_h * 0.22
+        gauge_y1 = y0 + cell_h * 0.92
         fig.add_trace(
             go.Indicator(
                 mode="gauge+number",
                 value=row[L["privacy"]],
-                number=dict(suffix="%", font=dict(size=22, color=color)),
-                title=dict(text=label, font=dict(size=12, color="#e2e8f0")),
+                number=dict(
+                    suffix="%",
+                    font=dict(size=18, color=color),
+                    valueformat=".0f",
+                ),
                 gauge=dict(
-                    axis=dict(range=[0, 100], tickcolor=GRID, tickfont=dict(size=8)),
-                    bar=dict(color=color, thickness=0.35),
+                    axis=dict(range=[0, 100], tickcolor=GRID, tickfont=dict(size=7), nticks=3),
+                    bar=dict(color=color, thickness=0.42),
                     bgcolor=PLOT_BG,
                     borderwidth=0,
                     steps=[
@@ -234,11 +260,26 @@ def fig_privacy_gauges(ranking_df, lang: str = "en", height: int = 280) -> go.Fi
                         {"range": [75, 100], "color": "rgba(0,208,156,0.14)"},
                     ],
                 ),
-                domain={"x": [x0, x1], "y": [0.05, 0.95]},
+                domain={"x": [x0, x1], "y": [gauge_y0, gauge_y1]},
             )
         )
+        annotations.append(
+            dict(
+                x=(x0 + x1) / 2,
+                y=y0 + cell_h * 0.06,
+                xref="paper",
+                yref="paper",
+                text=label,
+                showarrow=False,
+                font=dict(size=10, color="#e2e8f0"),
+                xanchor="center",
+                yanchor="bottom",
+            )
+        )
+
     layout = _base_layout(t("chart.privacy_title", lang), height=height)
-    layout["margin"] = dict(l=8, r=8, t=72, b=8)
+    layout["margin"] = dict(l=10, r=10, t=68, b=12)
+    layout["annotations"] = annotations
     fig.update_layout(**layout)
     return fig
 

@@ -36,6 +36,18 @@ chmod +x install.sh
 ./install.sh
 ```
 
+### Nuovo PC Windows — installazione one-shot
+
+```powershell
+git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
+cd qvac-vs-cloud-llms-health-test
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Poi avvia con **`launch_dashboard.bat`** (oppure `run.bat` per debug in finestra).
+
+Requisiti Windows: **Python 3.10+**, **Ollama** (installato automaticamente via winget se disponibile).
+
 Lo script fa tutto in automatico (una tantum):
 
 1. **Python** — crea `.venv` e installa Streamlit + dipendenze  
@@ -46,9 +58,16 @@ Lo script fa tutto in automatico (una tantum):
 
 ### Avvio con un click (dopo l’install)
 
+**macOS**
+
 - **Doppio click** su `QVAC Dashboard.app` → apre Safari su `http://localhost:8501`  
-- oppure: `./launch_dashboard.sh` (stesso comportamento, senza terminale visibile)  
-- oppure: `./run.sh` (Streamlit in foreground, utile per debug)
+- oppure: `./launch_dashboard.sh`  
+- oppure: `./run.sh` (foreground, debug)
+
+**Windows**
+
+- Doppio click su `launch_dashboard.bat`  
+- oppure: `run.bat` (foreground, debug)
 
 ### Setup manuale (alternativa)
 
@@ -126,17 +145,33 @@ QVAC Dashboard.app
 
 ---
 
-## Continuare da un altro PC / nuova Mac
+## Continuare da un altro PC / nuova Mac o Windows
+
+| Sistema | Comando install | Avvio |
+|---|---|---|
+| **macOS** | `./install.sh` | `QVAC Dashboard.app` o `./launch_dashboard.sh` |
+| **Windows** | `install.ps1` | `launch_dashboard.bat` |
 
 ```bash
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
-cd qvac-vs-cloud-llms-health-test
-./install.sh
 ```
 
-Poi doppio click su **QVAC Dashboard.app** oppure `./launch_dashboard.sh`.
+### Etichette versione cloud (ChatGPT / Claude / Gemini)
 
-I modelli GGUF **non** sono nel repo (`.gitignore`) — `install.sh` li scarica gratis da Hugging Face.
+In sidebar → **Versioni modelli cloud** — oppure modifica `data/cloud_tiers.json`.  
+Le etichette compaiono su schede modello, grafici e tabella ranking.
+
+### Screenshot già fatti — solo intestazione
+
+Per aggiungere una barra in alto (caso + tier usati) senza rifare lo screenshot:
+
+```bash
+pip install pillow   # una tantum
+# copia i PNG in assets/screenshots/raw/ e aggiorna assets/screenshots/manifest.json
+python scripts/annotate_screenshots.py
+```
+
+Output in `assets/screenshots/annotated/`.
 
 ---
 

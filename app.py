@@ -11,6 +11,7 @@ from lib.browser import cloud_url, copy_to_clipboard, open_all_cloud_tabs
 from lib.cases import CASE_IDS, build_prompt, case_meta, case_text_for, default_case_text
 from lib.i18n import DEFAULT_LANG, t
 from lib.lang_switch import apply_language_switch
+from lib.cloud_tiers import load_tier_labels, save_tier_labels, tier_label
 from lib.metrics import TABLE_MODEL_SHORT, _L
 from lib.tiers import MODEL_CONFIG, build_qvac_prompt
 from lib.runtime_env import is_streamlit_cloud
@@ -63,10 +64,17 @@ for k, v in [
     if k not in st.session_state:
         st.session_state[k] = v
 
+if "cloud_tier_labels" not in st.session_state:
+    st.session_state.cloud_tier_labels = load_tier_labels()
+
 if not st.session_state.saved_slots:
     st.session_state.saved_slots = session_store.load_slots()
 
 lang = st.session_state.lang
+
+
+def _tier_kw() -> dict:
+    return {"tier_labels": st.session_state.cloud_tier_labels}
 
 
 def _case_label(case_id=None) -> str:
@@ -303,7 +311,7 @@ def finale_ranking_dialog():
         st.caption(t("session.finale_avg_help", lang, n=max(n_std, 0)))
         st.caption(t("session.finale_avg_rescaled", lang))
         if not avg_df.empty:
-            st.plotly_chart(charts.fig_consensus_ranking_bars(avg_df, lang, height=220), use_container_width=True)
+            st.plotly_chart(charts.fig_consensus_ranking_bars(avg_df, lang, height=220, **_tier_kw()), use_container_width=True)
             st.dataframe(avg_df, use_container_width=True, hide_index=True)
         else:
             st.info(t("session.finale_avg_empty", lang))
@@ -313,7 +321,7 @@ def finale_ranking_dialog():
             st.caption(t("session.finale_gold_help", lang, case=gold_case))
             if len(gold_entries) > 1:
                 st.caption(t("session.finale_gold_avg_help", lang, n=len(gold_entries)))
-            st.plotly_chart(charts.fig_clinical_ranking_bars(gold_df, lang, height=220), use_container_width=True)
+            st.plotly_chart(charts.fig_clinical_ranking_bars(gold_df, lang, height=220, **_tier_kw()), use_container_width=True)
             st.dataframe(gold_df, use_container_width=True, hide_index=True)
         else:
             st.info(t("session.finale_gold_empty", lang))
@@ -558,6 +566,18 @@ with st.sidebar:
     ):
         reset_confirm_dialog()
 
+    with st.expander("☁️ " + t("sidebar.cloud_tiers", lang), expanded=False):
+        st.caption(t("sidebar.cloud_tiers_help", lang))
+        labels = dict(st.session_state.cloud_tier_labels)
+        labels["chatgpt"] = st.text_input("ChatGPT", value=labels.get("chatgpt", ""), key="tier_chatgpt")
+        labels["claude"] = st.text_input("Claude", value=labels.get("claude", ""), key="tier_claude")
+        labels["gemini"] = st.text_input("Gemini", value=labels.get("gemini", ""), key="tier_gemini")
+        labels["qvac"] = st.text_input("QVAC", value=labels.get("qvac", ""), key="tier_qvac")
+        if st.button(t("sidebar.cloud_tiers_save", lang), use_container_width=True):
+            st.session_state.cloud_tier_labels = labels
+            save_tier_labels(labels)
+            st.toast(t("sidebar.cloud_tiers_saved", lang), icon="✅")
+
     with st.expander("👁️ " + t("sidebar.vlm", lang), expanded=False):
         uploaded = st.file_uploader(t("sidebar.vlm_upload", lang), type=["jpg", "jpeg", "png", "pdf"])
         if uploaded:
@@ -578,7 +598,10 @@ with st.sidebar:
                 st.session_state.case_text_version += 1
                 st.rerun()
 
-    st.caption("🔒 100% on-device inference for QVAC MedPsy · cloud models require manual copy/paste.")
+    st.markdown(
+        f'<p class="sidebar-footer-note">{t("sidebar.privacy_note", lang)}</p>',
+        unsafe_allow_html=True,
+    )
 
 # --- Header ---
 hdr_l, hdr_r = st.columns([5, 1.3])
@@ -868,12 +891,17 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
             if cfg["cloud"] and cfg.get("url")
             else ""
         )
+        vendor_line = cfg["vendor"]
+        if cfg["cloud"]:
+            tier_txt = tier_label(key, st.session_state.cloud_tier_labels)
+            if tier_txt:
+                vendor_line = f'{vendor_line} · <span class="cloud-tier-tag">{tier_txt}</span>'
         st.markdown(
             f'<div class="model-card fade-in" style="--model-color:{cfg["color"]};">'
             f'<div class="model-card-head">'
             f'<span class="model-card-name"><span class="m-icon">{cfg["icon"]}</span>{cfg["name"]} '
             f'{badge_html}{link_html}</span>{status_html}</div>'
-            f'<div class="model-vendor">{cfg["vendor"]}</div>'
+            f'<div class="model-vendor">{vendor_line}</div>'
             f'<div class="model-instructions">'
             f'{t("card.instructions_cloud", lang, name=cfg["name"]) if cfg["cloud"] else t("card.instructions_local", lang)}'
             f"</div></div>",
@@ -1127,41 +1155,42 @@ if compare is not None:
                 st.caption(t("ranking.clinical_chart_note", lang))
 
             if use_gold_cmp:
-                rk_col1, rk_col2, rk_col3 = st.columns([1, 1, 1])
+                rk_col1, rk_col2 = st.columns(2)
                 with rk_col1:
                     st.plotly_chart(
-                        charts.fig_consensus_ranking_bars(ranking_df, lang, height=260),
+                        charts.fig_consensus_ranking_bars(ranking_df, lang, height=280, **_tier_kw()),
                         use_container_width=True,
                         key="chart_ranking_consensus",
                     )
                 with rk_col2:
                     st.plotly_chart(
-                        charts.fig_clinical_ranking_bars(ranking_df, lang, height=260),
+                        charts.fig_clinical_ranking_bars(ranking_df, lang, height=280, **_tier_kw()),
                         use_container_width=True,
                         key="chart_ranking_clinical",
                     )
-                with rk_col3:
-                    st.plotly_chart(
-                        charts.fig_privacy_gauges(ranking_df, lang, height=260),
-                        use_container_width=True,
-                        key="chart_privacy_hero",
-                    )
+                st.plotly_chart(
+                    charts.fig_privacy_gauges(ranking_df, lang, height=300, **_tier_kw()),
+                    use_container_width=True,
+                    key="chart_privacy_hero",
+                )
             else:
-                rk_col1, rk_col2 = st.columns([1, 1])
+                rk_col1, rk_col2 = st.columns(2)
                 with rk_col1:
                     st.plotly_chart(
-                        charts.fig_consensus_ranking_bars(ranking_df, lang, height=260),
+                        charts.fig_consensus_ranking_bars(ranking_df, lang, height=280, **_tier_kw()),
                         use_container_width=True,
                         key="chart_ranking_hero",
                     )
                 with rk_col2:
                     st.plotly_chart(
-                        charts.fig_privacy_gauges(ranking_df, lang, height=260),
+                        charts.fig_privacy_gauges(ranking_df, lang, height=300, **_tier_kw()),
                         use_container_width=True,
                         key="chart_privacy_hero",
                     )
 
-            consensus_df = metrics.build_consensus_table(compare, model_keys, lang)
+            consensus_df = metrics.build_consensus_table(
+                compare, model_keys, lang, tier_labels=st.session_state.cloud_tier_labels
+            )
             st.dataframe(
                 consensus_df,
                 use_container_width=True,
@@ -1303,18 +1332,18 @@ if compare is not None:
                 with chart_tab_bars:
                     if use_gold_cmp:
                         st.plotly_chart(
-                            charts.fig_consensus_ranking_bars(ranking_df, lang),
+                            charts.fig_consensus_ranking_bars(ranking_df, lang, **_tier_kw()),
                             use_container_width=True,
                             key="chart_bars_consensus",
                         )
                         st.plotly_chart(
-                            charts.fig_clinical_ranking_bars(ranking_df, lang),
+                            charts.fig_clinical_ranking_bars(ranking_df, lang, **_tier_kw()),
                             use_container_width=True,
                             key="chart_bars_clinical",
                         )
                     else:
                         st.plotly_chart(
-                            charts.fig_consensus_ranking_bars(ranking_df, lang),
+                            charts.fig_consensus_ranking_bars(ranking_df, lang, **_tier_kw()),
                             use_container_width=True,
                             key="chart_bars",
                         )
@@ -1386,7 +1415,7 @@ if compare is not None:
                         )
                         st.caption(t("session.finale_avg_rescaled", lang))
                         st.plotly_chart(
-                            charts.fig_consensus_ranking_bars(avg_df, lang, height=240),
+                            charts.fig_consensus_ranking_bars(avg_df, lang, height=240, **_tier_kw()),
                             use_container_width=True,
                             key="chart_finale_avg",
                         )
@@ -1403,7 +1432,7 @@ if compare is not None:
                         st.markdown("##### " + t("session.finale_gold", lang))
                         st.caption(t("session.finale_gold_help", lang, case=gold_case))
                         st.plotly_chart(
-                            charts.fig_clinical_ranking_bars(gold_df, lang, height=240),
+                            charts.fig_clinical_ranking_bars(gold_df, lang, height=240, **_tier_kw()),
                             use_container_width=True,
                             key="chart_finale_gold",
                         )

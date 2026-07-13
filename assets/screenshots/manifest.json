@@ -1,0 +1,40 @@
+{
+  "tier_labels": {},
+  "images": [
+    {
+      "file": "assets/screenshots/raw/case1_ranking.png",
+      "case": "Case 1 — Chest pain (standard clinical)",
+      "out": "case1_ranking.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case2_ranking.png",
+      "case": "Case 2 — MS / MRI (neurology)",
+      "out": "case2_ranking.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case3_ranking.png",
+      "case": "Case 3 — Appendicitis (pediatric)",
+      "out": "case3_ranking.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case4_ranking.png",
+      "case": "Case 4 — Mania (psychiatry)",
+      "out": "case4_ranking.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case5_ranking_a.png",
+      "case": "Case 5 — Custom / gold standard (run 1)",
+      "out": "case5_ranking_a.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case5_ranking_b.png",
+      "case": "Case 5 — Custom / gold standard (clinical view)",
+      "out": "case5_ranking_b.png"
+    },
+    {
+      "file": "assets/screenshots/raw/case1_workflow.png",
+      "case": "Case 1 — Setup / workflow",
+      "out": "case1_workflow.png"
+    }
+  ]
+}
