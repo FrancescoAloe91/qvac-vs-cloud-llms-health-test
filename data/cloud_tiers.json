@@ -1,6 +1,6 @@
 {
-  "chatgpt": "GPT-4o (account free · chatgpt.com)",
-  "claude": "Claude Sonnet (account free · claude.ai)",
-  "gemini": "Gemini 2.0 Flash (gemini.google.com)",
+  "chatgpt": "Tier gratuito predefinito (chatgpt.com — nuova chat)",
+  "claude": "Tier gratuito predefinito (claude.ai — nuova chat)",
+  "gemini": "Tier gratuito predefinito (gemini.google.com — nuova chat)",
   "qvac": "MedPsy 4B · CPU on-device"
 }

@@ -11,9 +11,9 @@ from lib.tiers import CLOUD_KEYS, MODEL_CONFIG
 _TIERS_PATH = Path(__file__).resolve().parent.parent / "data" / "cloud_tiers.json"
 
 DEFAULT_TIER_LABELS: Dict[str, str] = {
-    "chatgpt": "Free tier (chatgpt.com)",
-    "claude": "Free tier (claude.ai)",
-    "gemini": "Gemini app (gemini.google.com)",
+    "chatgpt": "Default free tier (chatgpt.com — new chat)",
+    "claude": "Default free tier (claude.ai — new chat)",
+    "gemini": "Default free tier (gemini.google.com — new chat)",
     "qvac": "MedPsy 4B · CPU on-device",
 }
 
