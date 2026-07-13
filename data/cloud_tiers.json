@@ -2,5 +2,5 @@
   "chatgpt": "Tier gratuito predefinito (chatgpt.com — modello non indicato in UI)",
   "claude": "Sonnet 5 · Medium",
   "gemini": "3.5 Flash · extended thinking",
-  "qvac": "MedPsy 4B · CPU on-device"
+  "qvac": "MedPsy-4B-GGUF Q4_K_M · Ollama medpsy-4b-cpu · CPU"
 }

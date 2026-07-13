@@ -20,6 +20,31 @@ MODEL_NAME = "Tether QVAC MedPsy 4B"
 
 OLLAMA_HOST = os.environ.get("QVAC_OLLAMA_HOST", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("QVAC_OLLAMA_MODEL", "medpsy-4b-cpu")
+GGUF_REPO = "qvac/MedPsy-4B-GGUF"
+GGUF_FILE = os.environ.get("MEDPSY_QUANT", "medpsy-4b-q4_k_m-imat.gguf")
+
+
+def quant_label() -> str:
+    """Human-readable quant tag from the GGUF filename (e.g. Q4_K_M)."""
+    lower = GGUF_FILE.lower()
+    if "q4_k_m" in lower:
+        return "Q4_K_M"
+    if "q8_0" in lower:
+        return "Q8_0"
+    if "q5_k_m" in lower:
+        return "Q5_K_M"
+    stem = GGUF_FILE.replace(".gguf", "").split("-")[-1]
+    return stem.upper().replace("_", "_") if stem else "GGUF"
+
+
+def runtime_tier_label() -> str:
+    """Full on-device stack label for cards, charts and screenshot headers."""
+    return f"MedPsy-4B-GGUF {quant_label()} · Ollama {OLLAMA_MODEL} · CPU"
+
+
+def runtime_header_chip() -> str:
+    """Short label for the top header live chip."""
+    return f"MedPsy-4B {quant_label()} · Ollama {OLLAMA_MODEL} · on-device"
 
 # Sampling — cloud-like: same case → clinically similar answers, not byte-identical.
 # No fixed seed: each Run benchmark draws a fresh sample (like ChatGPT/Claude/Gemini).

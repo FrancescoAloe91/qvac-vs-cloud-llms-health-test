@@ -11,7 +11,7 @@ from lib.browser import cloud_url, copy_to_clipboard, open_all_cloud_tabs
 from lib.cases import CASE_IDS, build_prompt, case_meta, case_text_for, default_case_text
 from lib.i18n import DEFAULT_LANG, t
 from lib.lang_switch import apply_language_switch
-from lib.cloud_tiers import load_tier_labels, save_tier_labels, tier_label
+from lib.cloud_tiers import effective_tier_labels, load_tier_labels, save_tier_labels, tier_label
 from lib.metrics import TABLE_MODEL_SHORT, _L
 from lib.tiers import MODEL_CONFIG, build_qvac_prompt
 from lib.runtime_env import is_streamlit_cloud
@@ -74,7 +74,9 @@ lang = st.session_state.lang
 
 
 def _tier_kw() -> dict:
-    return {"tier_labels": st.session_state.cloud_tier_labels}
+    labels = effective_tier_labels(st.session_state.cloud_tier_labels)
+    st.session_state.cloud_tier_labels["qvac"] = labels["qvac"]
+    return {"tier_labels": labels}
 
 
 def _case_label(case_id=None) -> str:
@@ -572,8 +574,11 @@ with st.sidebar:
         labels["chatgpt"] = st.text_input("ChatGPT", value=labels.get("chatgpt", ""), key="tier_chatgpt")
         labels["claude"] = st.text_input("Claude", value=labels.get("claude", ""), key="tier_claude")
         labels["gemini"] = st.text_input("Gemini", value=labels.get("gemini", ""), key="tier_gemini")
-        labels["qvac"] = st.text_input("QVAC", value=labels.get("qvac", ""), key="tier_qvac")
+        qvac_label = medpsy.runtime_tier_label()
+        st.text_input("QVAC MedPsy", value=qvac_label, disabled=True, key="tier_qvac_display")
+        st.caption(t("sidebar.cloud_tiers_qvac_auto", lang))
         if st.button(t("sidebar.cloud_tiers_save", lang), use_container_width=True):
+            labels["qvac"] = qvac_label
             st.session_state.cloud_tier_labels = labels
             save_tier_labels(labels)
             st.toast(t("sidebar.cloud_tiers_saved", lang), icon="✅")
@@ -610,7 +615,7 @@ with hdr_l:
     st.markdown(f'<p class="app-title fade-in">🩺 {t("title", lang)}</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="app-subtitle">{t("subtitle", lang)}</p>', unsafe_allow_html=True)
     st.markdown(
-        ui.live_chip_html("QVAC MedPsy 4B · on-device")
+        ui.live_chip_html(medpsy.runtime_header_chip())
         + "&nbsp;&nbsp;"
         + ui.usdt_chip_html(f"{st.session_state.wallet['balance']:.2f} USDT"),
         unsafe_allow_html=True,
@@ -893,10 +898,9 @@ for col, key in zip([c1, c2, c3, c4], ALL_KEYS):
             else ""
         )
         vendor_line = cfg["vendor"]
-        if cfg["cloud"]:
-            tier_txt = tier_label(key, st.session_state.cloud_tier_labels)
-            if tier_txt:
-                vendor_line = f'{vendor_line} · <span class="cloud-tier-tag">{tier_txt}</span>'
+        tier_txt = tier_label(key, effective_tier_labels(st.session_state.cloud_tier_labels))
+        if tier_txt:
+            vendor_line = f'{vendor_line} · <span class="cloud-tier-tag">{tier_txt}</span>'
         st.markdown(
             f'<div class="model-card fade-in" style="--model-color:{cfg["color"]};">'
             f'<div class="model-card-head">'
@@ -1190,7 +1194,7 @@ if compare is not None:
                     )
 
             consensus_df = metrics.build_consensus_table(
-                compare, model_keys, lang, tier_labels=st.session_state.cloud_tier_labels
+                compare, model_keys, lang, tier_labels=effective_tier_labels(st.session_state.cloud_tier_labels)
             )
             st.dataframe(
                 consensus_df,

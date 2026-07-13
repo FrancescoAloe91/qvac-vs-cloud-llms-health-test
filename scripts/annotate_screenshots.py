@@ -92,8 +92,12 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUT_DIR)
     args = parser.parse_args()
 
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from lib.cloud_tiers import effective_tier_labels, load_tier_labels
+
     manifest = _load_json(args.manifest)
-    tiers = manifest.get("tier_labels") or _load_json(DEFAULT_TIERS)
+    base = manifest.get("tier_labels") or load_tier_labels()
+    tiers = effective_tier_labels(base)
     images = manifest.get("images") or []
     if not images:
         print(f"No images in {args.manifest}", file=sys.stderr)
