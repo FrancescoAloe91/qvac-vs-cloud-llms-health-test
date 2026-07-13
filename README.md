@@ -2,11 +2,11 @@
 
 Dashboard di benchmark clinico: confronta **ChatGPT**, **Claude** e **Gemini** (risposte incollate dai siti ufficiali) con **Tether QVAC MedPsy 4B** in inferenza locale reale via Ollama.
 
+**Demo live (gratis):** [francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app)
+
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py)
 
-**Demo pubblica (gratuita):** vedi [DEPLOY.md](DEPLOY.md) — deploy in 2 minuti su Streamlit Cloud (0 €).
-
-| | Locale (completo) | Cloud pubblica (gratis) |
+| | Locale (completo) | [Demo cloud](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app) (gratis) |
 |---|---|---|
 | UI + ranking + slot salvati | ✅ | ✅ |
 | Incolla risposte cloud | ✅ | ✅ |
@@ -27,23 +27,37 @@ Dashboard di benchmark clinico: confronta **ChatGPT**, **Claude** e **Gemini** (
 
 ## Avvio locale (macchina tua, tutto gratis)
 
-### Setup motore QVAC (una tantum)
+### Nuova Mac — installazione one-shot
 
 ```bash
-./scripts/setup_medpsy.sh
+git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
+cd qvac-vs-cloud-llms-health-test
+chmod +x install.sh
+./install.sh
 ```
 
-Scarica Ollama, il GGUF di [MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B-GGUF) (~2.7 GB) e il modello embedding `all-minilm-cpu`.
+Lo script fa tutto in automatico (una tantum):
 
-### Dashboard
+1. **Python** — crea `.venv` e installa Streamlit + dipendenze  
+2. **Ollama + MedPsy** — scarica il motore locale e il modello [MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B-GGUF) (~2.7 GB) + embedding `all-minilm-cpu`  
+3. **Launcher** — ricostruisce `QVAC Dashboard.app` con path relativi (funziona in qualsiasi cartella)
+
+> Non serve un “QVAC SDK” separato: il progetto usa **Ollama** + **MedPsy GGUF** da Hugging Face, gestiti da `scripts/setup_medpsy.sh` (chiamato da `install.sh`).
+
+### Avvio con un click (dopo l’install)
+
+- **Doppio click** su `QVAC Dashboard.app` → apre Safari su `http://localhost:8501`  
+- oppure: `./launch_dashboard.sh` (stesso comportamento, senza terminale visibile)  
+- oppure: `./run.sh` (Streamlit in foreground, utile per debug)
+
+### Setup manuale (alternativa)
 
 ```bash
+./scripts/setup_medpsy.sh   # solo motore Ollama + MedPsy
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
 ```
-
-Oppure doppio click su **QVAC Dashboard.app** → `http://localhost:8501`
 
 ---
 
@@ -83,22 +97,17 @@ Pulsante **“Vedi come sono calcolati i punteggi”** sotto la classifica per i
 
 ## Dashboard pubblica (gratuita)
 
+**URL live:** https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app
+
 Hosting **100% free** su [Streamlit Community Cloud](https://streamlit.io/cloud) (nessuna carta di credito).
-
-### Deploy in 2 minuti (una tantum)
-
-1. Clicca il badge **“Open in Streamlit”** in cima a questo README (o [deploy diretto](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py))  
-2. Accedi con GitHub (account gratis)  
-3. Conferma repo `FrancescoAloe91/qvac-vs-cloud-llms-health-test`, branch `main`, file `app.py`  
-4. **Deploy** → ottieni URL tipo `https://qvac-vs-cloud-llms-health-test.streamlit.app`
 
 ### Cosa funziona sulla demo cloud
 
 - Presentazione UI, casi clinici, incolla cloud, ranking e slot  
-- Puoi **incollare manualmente** anche la risposta QVAC (generata sul tuo Mac con `./run.sh`)  
+- Puoi **incollare manualmente** anche la risposta QVAC (generata sul tuo Mac con `./launch_dashboard.sh`)  
 - **Run benchmark** live richiede Ollama → solo in **locale**
 
-Aggiorna il link pubblico nel README dopo il primo deploy. Guida passo-passo: **[DEPLOY.md](DEPLOY.md)**.
+Per rifare il deploy o usare Render: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
@@ -107,26 +116,27 @@ Aggiorna il link pubblico nel README dopo il primo deploy. Guida passo-passo: **
 ```
 app.py                 # Dashboard Streamlit
 lib/                   # cases, medpsy, metrics, diagnosis_compare, session_store, …
+install.sh             # Setup one-shot nuova Mac (venv + MedPsy + launcher)
 PRESENTATION.md        # Pitch one-pager (demo / slide)
 scripts/setup_medpsy.sh
+scripts/build_dashboard_app.sh
 launch_dashboard.sh
 QVAC Dashboard.app
 ```
 
 ---
 
-## Continuare da un altro PC
+## Continuare da un altro PC / nuova Mac
 
 ```bash
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
 cd qvac-vs-cloud-llms-health-test
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-./scripts/setup_medpsy.sh
-./run.sh
+./install.sh
 ```
 
-I modelli GGUF **non** sono nel repo (`.gitignore`) — `setup_medpsy.sh` li scarica gratis.
+Poi doppio click su **QVAC Dashboard.app** oppure `./launch_dashboard.sh`.
+
+I modelli GGUF **non** sono nel repo (`.gitignore`) — `install.sh` li scarica gratis da Hugging Face.
 
 ---
 

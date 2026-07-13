@@ -1,0 +1,4 @@
+#!/bin/bash
+# QVAC Dashboard.app — project root is three levels above this script.
+PROJECT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+exec /bin/bash "$PROJECT_DIR/launch_dashboard.sh"

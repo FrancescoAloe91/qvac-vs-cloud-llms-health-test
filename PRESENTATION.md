@@ -46,8 +46,8 @@ I dati clinici non possono uscire dal dispositivo senza DPA, consenso e audit tr
 
 | Modalità | Link / comando |
 |---|---|
-| **Pubblica (gratis)** | Deploy Streamlit Community Cloud — badge nel [README](README.md) |
-| **Completa (QVAC live)** | `git clone` → `./scripts/setup_medpsy.sh` → `./run.sh` → `http://localhost:8501` |
+| **Pubblica (gratis)** | [Demo live](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app) |
+| **Completa (QVAC live)** | `git clone` → `./install.sh` → doppio click **QVAC Dashboard.app** → `http://localhost:8501` |
 
 ## Stack
 

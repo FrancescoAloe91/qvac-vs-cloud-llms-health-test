@@ -13,6 +13,7 @@ from lib.i18n import DEFAULT_LANG, t
 from lib.lang_switch import apply_language_switch
 from lib.metrics import TABLE_MODEL_SHORT, _L
 from lib.tiers import MODEL_CONFIG, build_qvac_prompt
+from lib.runtime_env import is_streamlit_cloud
 from lib.wallet import REWARD_DATA_SALE, add_reward, load_wallet
 
 st.set_page_config(
@@ -24,7 +25,7 @@ st.set_page_config(
 
 ui.inject_css()
 
-STREAMLIT_CLOUD = os.environ.get("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud"
+STREAMLIT_CLOUD = is_streamlit_cloud()
 
 ALL_KEYS = ("chatgpt", "claude", "gemini", "qvac")
 

@@ -9,7 +9,7 @@
    - Branch: `main`
    - Main file: `app.py`
 4. Clic **Deploy** — nessuna carta di credito
-5. Copia l’URL pubblico (es. `https://qvac-vs-cloud-llms-health-test.streamlit.app`) e incollalo nel README se diverso
+5. URL live di questo progetto: **https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app**
 
 **Sulla demo cloud:** incolla cloud + ranking OK; **Run benchmark QVAC** solo in locale (Ollama). Puoi incollare manualmente l’output QVAC generato sul tuo Mac.
 
@@ -31,8 +31,7 @@ Stesse limitazioni: niente Ollama sul server cloud.
 ```bash
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
 cd qvac-vs-cloud-llms-health-test
-./scripts/setup_medpsy.sh
-./run.sh
+./install.sh
 ```
 
-→ `http://localhost:8501`
+Poi doppio click su **QVAC Dashboard.app** o `./launch_dashboard.sh` → `http://localhost:8501`
