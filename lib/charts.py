@@ -37,6 +37,11 @@ def _chart_model_label(key: str, full_name: str, tier_labels: Optional[dict] = N
     return TABLE_MODEL_SHORT.get(key, full_name)
 
 
+def _chart_bar_tick(key: str, display_name: str) -> str:
+    """Short Y-axis labels so bars stay visible in narrow columns; version lives in the table."""
+    return TABLE_MODEL_SHORT.get(key, display_name)
+
+
 def _base_layout(title: str, height: int = 500) -> dict:
     return dict(
         title=dict(text=title, font=dict(size=16, color="#fafafa")),
@@ -57,7 +62,14 @@ def _base_layout(title: str, height: int = 500) -> dict:
     )
 
 
-def fig_radar(ranking_df, use_gold: bool, lang: str = "en", sem_available: bool = False) -> go.Figure:
+def fig_radar(
+    ranking_df,
+    use_gold: bool,
+    lang: str = "en",
+    sem_available: bool = False,
+    tier_labels: Optional[dict] = None,
+) -> go.Figure:
+    _ = tier_labels
     L = _L(lang)
     if use_gold:
         col_keys = [L["rel_short"], L["acc_cons_short"]]
@@ -126,9 +138,10 @@ def fig_consensus_ranking_bars(
     ranking_df, lang: str = "en", height: int = 260, tier_labels: Optional[dict] = None
 ) -> go.Figure:
     """Consensus ranking: best model in the group = 100%, others scale down."""
+    _ = tier_labels
     L = _L(lang)
     models = [
-        _chart_model_label(row["key"], row[L["model"]], tier_labels)
+        _chart_bar_tick(row["key"], row[L["model"]])
         for _, row in ranking_df.iterrows()
     ]
     colors = [MODEL_COLORS.get(k, "#94a3b8") for k in ranking_df["key"]]
@@ -157,10 +170,11 @@ def fig_clinical_ranking_bars(
     ranking_df, lang: str = "en", height: int = 260, tier_labels: Optional[dict] = None
 ) -> go.Figure:
     """Clinical ranking vs. confirmed diagnosis — absolute % (100% = perfect match with reference)."""
+    _ = tier_labels
     L = _L(lang)
     score_col = L["score_clin_short"]
     models = [
-        _chart_model_label(row["key"], row[L["model"]], tier_labels)
+        _chart_bar_tick(row["key"], row[L["model"]])
         for _, row in ranking_df.iterrows()
     ]
     fig = go.Figure(
@@ -216,39 +230,37 @@ def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_ava
 def fig_privacy_gauges(
     ranking_df, lang: str = "en", height: int = 300, tier_labels: Optional[dict] = None
 ) -> go.Figure:
-    """Gauge per modello: 0% cloud → 100% on-device. 2×2 grid + label sotto per evitare tagli."""
+    """Gauge per modello: 0% cloud → 100% on-device — tutti sulla stessa riga."""
+    _ = tier_labels
     L = _L(lang)
     rows = list(ranking_df.iterrows())
     n = max(len(rows), 1)
-    cols = 2 if n > 2 else n
-    rows_n = (n + cols - 1) // cols
+    cols = n
+    rows_n = 1
     fig = go.Figure()
     annotations = []
 
-    x_gap, y_gap = 0.06, 0.08
+    x_gap, y_gap = 0.04, 0.12
     cell_w = (1.0 - x_gap * (cols + 1)) / cols
-    cell_h = (1.0 - y_gap * (rows_n + 1)) / rows_n
+    cell_h = 0.72
 
     for i, (_, row) in enumerate(rows):
         key = row["key"]
         color = MODEL_COLORS.get(key, "#94a3b8")
-        label = _chart_model_label(key, row[L["model"]], tier_labels)
-        col_i = i % cols
-        row_i = i // cols
-        x0 = x_gap + col_i * (cell_w + x_gap)
+        label = _chart_bar_tick(key, row[L["model"]])
+        x0 = x_gap + i * (cell_w + x_gap)
         x1 = x0 + cell_w
-        y1 = 1.0 - y_gap - row_i * (cell_h + y_gap)
-        y0 = y1 - cell_h
-        # Gauge body in upper ~72% of cell; number centered; label as annotation below.
-        gauge_y0 = y0 + cell_h * 0.22
-        gauge_y1 = y0 + cell_h * 0.92
+        y0 = y_gap
+        y1 = y0 + cell_h
+        gauge_y0 = y0 + cell_h * 0.2
+        gauge_y1 = y0 + cell_h * 0.95
         fig.add_trace(
             go.Indicator(
                 mode="gauge+number",
                 value=row[L["privacy"]],
                 number=dict(
                     suffix="%",
-                    font=dict(size=18, color=color),
+                    font=dict(size=16, color=color),
                     valueformat=".0f",
                 ),
                 gauge=dict(
@@ -268,25 +280,28 @@ def fig_privacy_gauges(
         annotations.append(
             dict(
                 x=(x0 + x1) / 2,
-                y=y0 + cell_h * 0.06,
+                y=y0 - 0.02,
                 xref="paper",
                 yref="paper",
                 text=label,
                 showarrow=False,
                 font=dict(size=10, color="#e2e8f0"),
                 xanchor="center",
-                yanchor="bottom",
+                yanchor="top",
             )
         )
 
-    layout = _base_layout(t("chart.privacy_title", lang), height=height)
-    layout["margin"] = dict(l=10, r=10, t=68, b=12)
+    layout = _base_layout(t("chart.privacy_title", lang), height=max(height, 220))
+    layout["margin"] = dict(l=8, r=8, t=64, b=28)
     layout["annotations"] = annotations
     fig.update_layout(**layout)
     return fig
 
 
-def fig_concordance_heatmap(matrix_keyed: dict, model_keys: list, lang: str = "en") -> go.Figure:
+def fig_concordance_heatmap(
+    matrix_keyed: dict, model_keys: list, lang: str = "en", tier_labels: Optional[dict] = None
+) -> go.Figure:
+    _ = tier_labels
     """Heatmap di concordanza diagnostica pairwise tra tutti i modelli attivi."""
     names = [MODEL_CONFIG_NAME.get(k, k) for k in model_keys]
     z = []
@@ -357,12 +372,13 @@ def fig_keyword_bar(keyword_counts: dict, total_models: int, lang: str = "en") -
     return fig
 
 
-def fig_urgency_compare(urgency: dict, lang: str = "en") -> go.Figure:
+def fig_urgency_compare(urgency: dict, lang: str = "en", tier_labels: Optional[dict] = None) -> go.Figure:
+    _ = tier_labels
     """Confronto del livello di urgenza/triage dichiarato da ciascun modello."""
     keys, scores, colors, labels = [], [], [], []
     for key, u in urgency.items():
         meta = URGENCY_META.get(u.get("label"), URGENCY_META[None])
-        keys.append(MODEL_CONFIG_NAME.get(key, key))
+        keys.append(TABLE_MODEL_SHORT.get(key, MODEL_CONFIG_NAME.get(key, key)))
         scores.append(u.get("score") or 0)
         colors.append(meta["color"])
         labels.append(t(meta["label_key"], lang))
@@ -384,7 +400,8 @@ def fig_urgency_compare(urgency: dict, lang: str = "en") -> go.Figure:
     return fig
 
 
-def fig_leaderboard(leaderboard_df, lang: str = "en") -> go.Figure:
+def fig_leaderboard(leaderboard_df, lang: str = "en", tier_labels: Optional[dict] = None) -> go.Figure:
+    _ = tier_labels
     """Classifica cumulativa vittorie/score medio tra i round eseguiti in sessione."""
     L = _L(lang)
     if leaderboard_df is None or leaderboard_df.empty:

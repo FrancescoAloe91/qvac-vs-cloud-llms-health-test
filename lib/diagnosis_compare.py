@@ -4,8 +4,7 @@ import re
 from collections import Counter
 from itertools import combinations
 
-from lib import embeddings
-from lib import clinical_scoring
+from lib import clinical_scoring, embeddings
 
 # Termini medici comuni per estrazione keyword
 _MEDICAL_STOP = {
@@ -274,7 +273,11 @@ def extract_diagnoses(text: str) -> list[str]:
 def _fallback_composite(rel: float, acc: float, sem) -> float:
     if sem is None:
         return round((rel + acc) / 2, 1)
-    return round(rel * 0.25 + acc * 0.35 + sem * 0.40, 1)
+    # Legacy fallback used only when semantic clinical dimensions are unavailable.
+    # Keep stable, but align weights to the unified 40/30/20/10 rule by mapping:
+    # reliability -> summary-ish (10%), accuracy -> diagnosis-ish (40%), semantic -> plan-ish (30%) + urgency-ish (20%).
+    # This is inherently an approximation; in normal operation we use true 4-dim weights.
+    return round(rel * 0.10 + acc * 0.40 + sem * 0.50, 1)
 
 
 def extract_keywords(text: str) -> set[str]:
@@ -600,12 +603,8 @@ def _urgency_vs_gold(model_u: dict, gold_u: dict, model_text: str, gold_text: st
     g_label = gold_u.get("label")
     m_label = model_u.get("label")
     if g_label:
-        order = {"critical": 4, "high": 3, "moderate": 2, "low": 1, None: 0}
-        if m_label == g_label:
-            label_score = 100.0
-        elif m_label:
-            diff = abs(order.get(m_label, 0) - order.get(g_label, 0))
-            label_score = {0: 100.0, 1: 78.0, 2: 50.0, 3: 25.0}.get(diff, 15.0)
+        if m_label:
+            label_score = clinical_scoring.urgency_label_similarity(m_label, g_label)
         else:
             label_score = 45.0
 
@@ -633,22 +632,15 @@ def _urgency_vs_gold(model_u: dict, gold_u: dict, model_text: str, gold_text: st
 
 
 def _gold_semantic_composite(dx, mgmt, urg, summary):
-    """Peso maggiore su diagnosi e piano — nessuna penalità per parole diverse."""
-    weights = {
-        "dx": (dx, 0.42),
-        "mgmt": (mgmt, 0.33),
-        "urg": (urg, 0.15),
-        "summary": (summary, 0.10),
-    }
-    total_w = 0.0
-    total = 0.0
-    for _, (val, w) in weights.items():
-        if val is not None:
-            total += val * w
-            total_w += w
-    if total_w <= 0:
-        return None
-    return round(total / total_w, 1)
+    """Weighted mean of four 0–100 dimension scores (true average, not tiers)."""
+    return clinical_scoring.weighted_dimension_composite(
+        [
+            (dx, 0.40),
+            (mgmt, 0.30),
+            (urg, 0.20),
+            (summary, 0.10),
+        ]
+    ) or None
 
 
 def _semantic_ddx_coverage(model_diags: list, gold_diags: list) -> float:
@@ -806,6 +798,7 @@ def compare_all(results: dict, gold_standard_text: str = None) -> dict:
             "summary": clinical.get("summary_semantic", {}),
             "urgency": clinical.get("urgency_agreement", {}),
         },
+        "clinical_dimension_pairs": clinical.get("pairs", {}),
         "keyword_reliability": final["reliability"],
         "keyword_accuracy": final["accuracy_consensus"],
         "urgency": urgency,

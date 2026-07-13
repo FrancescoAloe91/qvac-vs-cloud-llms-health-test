@@ -94,7 +94,7 @@ pip install -r requirements.txt
 1. Compila il template del caso reale anonimizzato  
 2. Incolla cloud **una volta** (puoi tenere le stesse risposte)  
 3. **Run benchmark** → **Salva run 1/4**  
-4. Ripeti run + salva fino a **4/4** (ogni run QVAC può variare leggermente)  
+4. Ripeti run + salva fino a **10/10** (finestra rolling: ultime 10 run; ogni run QVAC può variare leggermente)  
 5. Sidebar → **Ranking definitivo mediato** (media casi 1–4 + gold caso 5)
 
 ### Reset

@@ -11,7 +11,13 @@ from lib.browser import cloud_url, copy_to_clipboard, open_all_cloud_tabs
 from lib.cases import CASE_IDS, build_prompt, case_meta, case_text_for, default_case_text
 from lib.i18n import DEFAULT_LANG, t
 from lib.lang_switch import apply_language_switch
-from lib.cloud_tiers import effective_tier_labels, load_tier_labels, save_tier_labels, tier_label
+from lib.cloud_tiers import (
+    effective_tier_labels,
+    load_tier_labels,
+    normalize_tier_labels_dict,
+    save_tier_labels,
+    tier_label,
+)
 from lib.metrics import TABLE_MODEL_SHORT, _L
 from lib.tiers import MODEL_CONFIG, build_qvac_prompt
 from lib.runtime_env import is_streamlit_cloud
@@ -66,6 +72,7 @@ for k, v in [
 
 if "cloud_tier_labels" not in st.session_state:
     st.session_state.cloud_tier_labels = load_tier_labels()
+st.session_state.cloud_tier_labels = normalize_tier_labels_dict(st.session_state.cloud_tier_labels)
 
 if not st.session_state.saved_slots:
     st.session_state.saved_slots = session_store.load_slots()
@@ -77,6 +84,10 @@ def _tier_kw() -> dict:
     labels = effective_tier_labels(st.session_state.cloud_tier_labels)
     st.session_state.cloud_tier_labels["qvac"] = labels["qvac"]
     return {"tier_labels": labels}
+
+
+def _tier_labels() -> dict:
+    return effective_tier_labels(st.session_state.cloud_tier_labels)
 
 
 def _case_label(case_id=None) -> str:
@@ -139,25 +150,48 @@ def _recall_slot(case_id: str) -> None:
         del st.session_state["gold_standard_input"]
 
 
+def _case5_save_ui(slots: dict) -> dict:
+    """Labels for case 5 multi-save (rolling window of CASE5_MAX_RUNS)."""
+    count = session_store.slot_run_count(slots, "case5")
+    max_r = session_store.CASE5_MAX_RUNS
+    at_cap = count >= max_r
+    return {
+        "count": count,
+        "max": max_r,
+        "next_n": min(count + 1, max_r),
+        "at_cap": at_cap,
+    }
+
+
 def _save_current_snapshot() -> None:
     ready = st.session_state.get("last_snapshot_ready")
     slot_id = _save_slot_id()
     if not ready or not slot_id or ready.get("case_id") != slot_id:
         return
+    if slot_id == "case5":
+        before = session_store.slot_run_count(st.session_state.saved_slots, "case5")
+        st.session_state.saved_slots = session_store.save_slot(
+            st.session_state.saved_slots, slot_id, ready
+        )
+        after = session_store.slot_run_count(st.session_state.saved_slots, "case5")
+        max_r = session_store.CASE5_MAX_RUNS
+        if before >= max_r:
+            st.toast(
+                t("sidebar.save_case5_run_toast_rolling", lang, max=max_r),
+                icon="💾",
+            )
+        else:
+            st.toast(
+                t("sidebar.save_case5_run_toast", lang, n=after, max=max_r),
+                icon="💾",
+            )
+        st.rerun()
+        return
     st.session_state.saved_slots = session_store.save_slot(
         st.session_state.saved_slots, slot_id, ready
     )
-    # Caso 5: resta in modalità live per salvare run 2/3/4 senza bloccare il Salva.
-    if slot_id != "case5":
-        st.session_state.view_slot = slot_id
-    if slot_id == "case5":
-        n = session_store.slot_run_count(st.session_state.saved_slots, "case5")
-        st.toast(
-            t("sidebar.save_case5_run_toast", lang, n=n, max=session_store.CASE5_MAX_RUNS),
-            icon="💾",
-        )
-    else:
-        st.toast(t("sidebar.save_slot_toast", lang, case=_case_label(slot_id)), icon="💾")
+    st.session_state.view_slot = slot_id
+    st.toast(t("sidebar.save_slot_toast", lang, case=_case_label(slot_id)), icon="💾")
     st.rerun()
 
 
@@ -217,10 +251,28 @@ def _render_sidebar_case_slots() -> None:
 
 
 def _render_sidebar_finale_actions() -> None:
-    if st.button("🎬 " + t("sidebar.finale_btn", lang), use_container_width=True):
-        finale_ranking_dialog()
-    if st.button("🗑️ " + t("sidebar.clear_saved", lang), use_container_width=True):
-        clear_saved_dialog()
+    with st.container(border=True):
+        st.markdown('<span class="sidebar-finale-marker"></span>', unsafe_allow_html=True)
+        if st.button(
+            "🎬 " + t("sidebar.finale_btn", lang),
+            key="btn_finale_ranking",
+            use_container_width=True,
+        ):
+            finale_ranking_dialog()
+
+
+def _render_sidebar_danger_zone() -> None:
+    """Destructive actions — separated from ranking / guide controls."""
+    st.divider()
+    with st.container(border=True):
+        st.markdown('<span class="sidebar-danger-zone-marker"></span>', unsafe_allow_html=True)
+        if st.button(
+            "🗑️ " + t("sidebar.clear_saved", lang),
+            key="btn_clear_saved_cases",
+            use_container_width=True,
+            help=t("sidebar.clear_saved_help", lang),
+        ):
+            clear_saved_dialog()
 
 
 def _render_main_save_bar(can_save: bool, slot_id: str) -> None:
@@ -230,24 +282,40 @@ def _render_main_save_bar(can_save: bool, slot_id: str) -> None:
     with st.container(border=True):
         sc1, sc2 = st.columns([1, 2.2])
         with sc1:
-            lbl = (
-                t(
-                    "sidebar.save_case5_run",
-                    lang,
-                    n=session_store.slot_run_count(st.session_state.saved_slots, "case5") + 1,
-                    max=session_store.CASE5_MAX_RUNS,
+            if slot_id == "case5":
+                c5 = _case5_save_ui(st.session_state.saved_slots)
+                lbl = (
+                    t("sidebar.save_case5_run_rolling", lang, max=c5["max"])
+                    if c5["at_cap"]
+                    else t(
+                        "sidebar.save_case5_run",
+                        lang,
+                        n=c5["next_n"],
+                        max=c5["max"],
+                    )
                 )
-                if slot_id == "case5"
-                else "💾 " + t("sidebar.save_slot", lang)
-            )
+            else:
+                lbl = "💾 " + t("sidebar.save_slot", lang)
             if st.button(lbl, key="btn_save_main", type="primary", use_container_width=True):
                 _save_current_snapshot()
         with sc2:
             if slot_id == "case5":
-                st.markdown(
-                    f"**{t('session.save_case5_ready', lang, n=session_store.slot_run_count(st.session_state.saved_slots, 'case5') + 1, max=session_store.CASE5_MAX_RUNS)}**"
-                )
-                st.caption(t("session.save_case5_ready_short", lang, n=session_store.slot_run_count(st.session_state.saved_slots, "case5") + 1, max=session_store.CASE5_MAX_RUNS))
+                c5 = _case5_save_ui(st.session_state.saved_slots)
+                if c5["at_cap"]:
+                    st.markdown(f"**{t('session.save_case5_ready_rolling', lang, max=c5['max'])}**")
+                    st.caption(t("session.save_case5_ready_short_rolling", lang, max=c5["max"]))
+                else:
+                    st.markdown(
+                        f"**{t('session.save_case5_ready', lang, n=c5['next_n'], max=c5['max'])}**"
+                    )
+                    st.caption(
+                        t(
+                            "session.save_case5_ready_short",
+                            lang,
+                            n=c5["next_n"],
+                            max=c5["max"],
+                        )
+                    )
             else:
                 st.markdown(f"**{t('session.save_ready', lang, case=_case_label(slot_id))}**")
                 st.caption(t("session.save_ready_short", lang, case=_case_label(slot_id)))
@@ -289,6 +357,7 @@ def reset_confirm_dialog():
 
 @st.dialog(t("sidebar.finale_title", lang), width="large")
 def finale_ranking_dialog():
+    dialog_L = _L(lang)
     slots = st.session_state.saved_slots
     history = session_store.slots_as_history(slots)
     avg_df = metrics.build_final_consensus_average(history, lang)
@@ -311,10 +380,14 @@ def finale_ranking_dialog():
             and (session_store.slot_latest_snapshot(slots.get(c)) or {}).get("entry", {}).get("mode") != "gold_standard"
         ])
         st.caption(t("session.finale_avg_help", lang, n=max(n_std, 0)))
-        st.caption(t("session.finale_avg_rescaled", lang))
         if not avg_df.empty:
             st.plotly_chart(charts.fig_consensus_ranking_bars(avg_df, lang, height=220, **_tier_kw()), use_container_width=True)
-            st.dataframe(avg_df, use_container_width=True, hide_index=True)
+            ui.show_model_table(
+                avg_df,
+                lang,
+                _tier_labels(),
+                columns=[dialog_L["model"], dialog_L["score_cons_rescaled"], dialog_L["rank_consensus"]],
+            )
         else:
             st.info(t("session.finale_avg_empty", lang))
     with fc2:
@@ -322,9 +395,21 @@ def finale_ranking_dialog():
         if not gold_df.empty:
             st.caption(t("session.finale_gold_help", lang, case=gold_case))
             if len(gold_entries) > 1:
-                st.caption(t("session.finale_gold_avg_help", lang, n=len(gold_entries)))
+                st.caption(
+                    t(
+                        "session.finale_gold_avg_help",
+                        lang,
+                        n=len(gold_entries),
+                        max=session_store.CASE5_MAX_RUNS,
+                    )
+                )
             st.plotly_chart(charts.fig_clinical_ranking_bars(gold_df, lang, height=220, **_tier_kw()), use_container_width=True)
-            st.dataframe(gold_df, use_container_width=True, hide_index=True)
+            ui.show_model_table(
+                gold_df,
+                lang,
+                _tier_labels(),
+                columns=[dialog_L["model"], dialog_L["score_clin_short"], dialog_L["rank_clinical"]],
+            )
         else:
             st.info(t("session.finale_gold_empty", lang))
     if st.button(t("decision.close", lang), type="primary", use_container_width=True):
@@ -339,7 +424,8 @@ def clear_saved_dialog():
         if st.button(t("reset.confirm_cancel", lang), use_container_width=True):
             st.rerun()
     with c2:
-        if st.button(t("sidebar.clear_saved_confirm", lang), type="primary", use_container_width=True):
+        st.markdown('<span class="dialog-danger-confirm-marker"></span>', unsafe_allow_html=True)
+        if st.button(t("sidebar.clear_saved_confirm", lang), use_container_width=True, key="btn_clear_saved_confirm"):
             session_store.clear_slots()
             st.session_state.saved_slots = {}
             st.session_state.view_slot = None
@@ -376,102 +462,80 @@ def explain_scores_dialog(explanations: list, use_gold: bool):
     model_tabs = st.tabs([f"{e['icon']} {e['name']}" for e in explanations])
     for tab, e in zip(model_tabs, explanations):
         with tab:
+            cons = e["consensus"]
             st.markdown(
                 f"#### {e['icon']} {e['name']} — "
                 f"{t('cols.final_score', lang)}: **{e['final_score']}%**"
             )
 
-            st.markdown(f"**{t('explain.reliability_label', lang)}**")
-            st.caption(t("explain.reliability_desc", lang))
-            rel = e["reliability"]
-            st.metric(t("cols.reliability_short", lang), f"{rel['value']}%")
-            if rel["pairs"]:
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                t("explain.select_model", lang): t("explain.vs", lang, name=p["other"]),
-                                t("cols.reliability_short", lang): f"{p['value']}%",
-                            }
-                            for p in rel["pairs"]
-                        ]
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
+            st.markdown(f"**{t('explain.consensus_label', lang)}**")
+            st.caption(t("explain.consensus_desc", lang))
 
-            st.markdown(f"**{t('explain.accuracy_label', lang)}**")
-            st.caption(t("explain.accuracy_desc", lang))
-            acc = e["accuracy_consensus"]
-            st.metric(t("cols.accuracy_consensus_short", lang), f"{acc['value']}%")
-            if acc["pairs"]:
-                st.dataframe(
-                    pd.DataFrame(
-                        [
-                            {
-                                t("explain.select_model", lang): t("explain.vs", lang, name=p["other"]),
-                                t("cols.accuracy_consensus_short", lang): f"{p['value']}%",
-                            }
-                            for p in acc["pairs"]
-                        ]
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-            st.caption(t("explain.own_keywords", lang))
-            st.write(", ".join(acc["own_keywords"]) or t("explain.no_keywords", lang))
+            if cons["semantic_available"]:
+                d1, d2, d3, d4 = st.columns(4)
+                dims = cons["dimensions"]
+                d1.metric(t("cols.diagnosis_match_short", lang), f"{dims['diagnosis']}%" if dims["diagnosis"] is not None else "—")
+                d2.metric(t("cols.plan_next_steps_short", lang), f"{dims['management']}%" if dims["management"] is not None else "—")
+                d3.metric(t("cols.clinical_summary_short", lang), f"{dims['summary']}%" if dims["summary"] is not None else "—")
+                d4.metric(t("cols.urgency_agreement_short", lang), f"{dims['urgency']}%" if dims["urgency"] is not None else "—")
 
-            st.markdown(f"**{t('explain.semantic_label', lang)}**")
-            st.caption(t("explain.semantic_desc", lang))
-            sem = e["semantic"]
-            if sem["available"] and sem["value"] is not None:
-                st.metric(t("cols.semantic_short", lang), f"{sem['value']}%")
-                if sem["pairs"]:
-                    st.dataframe(
-                        pd.DataFrame(
-                            [
-                                {
-                                    t("explain.select_model", lang): t("explain.vs", lang, name=p["other"]),
-                                    t("cols.semantic_short", lang): f"{p['value']}%",
-                                }
-                                for p in sem["pairs"]
-                            ]
-                        ),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
+                for dim_key, dim_label_key in (
+                    ("diagnosis", "cols.diagnosis_match_short"),
+                    ("management", "cols.plan_next_steps_short"),
+                    ("summary", "cols.clinical_summary_short"),
+                ):
+                    pairs = cons["pairs"].get(dim_key) or []
+                    if pairs:
+                        st.caption(t("explain.dimension_pairs", lang, dim=t(dim_label_key, lang)))
+                        st.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        t("explain.select_model", lang): t("explain.vs", lang, name=p["other"]),
+                                        t("cols.semantic_short", lang): f"{p['value']}%",
+                                    }
+                                    for p in pairs
+                                ]
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
             else:
                 st.caption(t("explain.semantic_unavailable_note", lang))
 
             st.markdown(f"**{t('explain.formula_label', lang)}**")
-            if sem["available"] and sem["value"] is not None:
-                st.code(
-                    t(
-                        "explain.formula_consensus_3", lang,
-                        score=e["consensus_score"], rel=rel["value"], acc=acc["value"], sem=sem["value"],
-                    ),
-                    language=None,
-                )
-            else:
-                st.code(
-                    t("explain.formula_consensus_2", lang, score=e["consensus_score"], rel=rel["value"], acc=acc["value"]),
-                    language=None,
-                )
+            st.code(
+                t(
+                    "explain.formula_consensus_dim",
+                    lang,
+                    formula=cons["formula"],
+                    raw=cons["raw"],
+                    rescaled=cons["rescaled"],
+                ),
+                language=None,
+            )
+            st.caption(t("explain.consensus_rescale_note", lang))
 
             if use_gold and e.get("gold"):
                 g = e["gold"]
                 st.divider()
                 st.markdown(f"**{t('explain.gold_label', lang)}**")
                 st.caption(t("explain.gold_desc", lang))
-                gcol1, gcol2, gcol3 = st.columns(3)
-                gcol1.metric(t("cols.primary_accuracy", lang), f"{g['accuracy_primary']}%")
-                gcol2.metric(t("cols.ddx_coverage", lang), f"{g['coverage_ddx']}%")
-                if g["semantic_available"] and g["semantic"] is not None:
-                    gcol3.metric(t("cols.semantic_gold_short", lang), f"{g['semantic']}%")
+                gd = g["dimensions"]
+                gcol1, gcol2, gcol3, gcol4 = st.columns(4)
+                gcol1.metric(t("cols.primary_accuracy", lang), f"{gd['diagnosis']}%" if gd["diagnosis"] is not None else "—")
+                gcol2.metric(t("cols.ddx_coverage", lang), f"{gd['management']}%" if gd["management"] is not None else "—")
+                gcol3.metric(t("cols.semantic_gold_short", lang), f"{gd['urgency']}%" if gd["urgency"] is not None else "—")
+                gcol4.metric(t("cols.clinical_summary_short", lang), f"{gd['summary']}%" if gd["summary"] is not None else "—")
                 st.metric(f"🎓 {t('explain.grade_label', lang)}", f"{g['grade_10']} / 10")
                 st.caption(t("explain.grade_rubric", lang))
                 st.code(
-                    t("explain.formula_final_gold", lang, final=e["final_score"], cons=e["consensus_score"], gold=g["score"]),
+                    t(
+                        "explain.formula_gold_dim",
+                        lang,
+                        formula=g["formula"],
+                        score=g["score"],
+                    ),
                     language=None,
                 )
 
@@ -608,6 +672,7 @@ with st.sidebar:
         f'<p class="sidebar-footer-note">{t("sidebar.privacy_note", lang)}</p>',
         unsafe_allow_html=True,
     )
+    _render_sidebar_danger_zone()
 
 # --- Header ---
 hdr_l, hdr_r = st.columns([5, 1.3])
@@ -665,11 +730,7 @@ st.markdown(
 st.markdown(ui.eyebrow_html("🗂️", t("eyebrow.case", lang)), unsafe_allow_html=True)
 
 if st.session_state.view_slot:
-    st.info(
-        t("sidebar.viewing_saved", lang, case=_case_label(st.session_state.view_slot))
-        + " · "
-        + t("case.sidebar_nav_hint", lang)
-    )
+    st.info(t("sidebar.viewing_saved", lang, case=_case_label(st.session_state.view_slot)))
 else:
     st.caption(t("case.sidebar_nav_hint", lang))
 
@@ -844,7 +905,7 @@ with st.expander("🎯 " + t("gold.section", lang), expanded=st.session_state.us
     st.session_state.use_gold_standard = use_gold
     if use_gold:
         st.caption(t("gold.caption", lang))
-        st.caption(t("gold.qvac_variance", lang))
+        st.caption(t("gold.qvac_variance", lang, max=session_store.CASE5_MAX_RUNS))
         gold_text = st.text_area(
             t("gold.input", lang),
             value=st.session_state.gold_standard_text,
@@ -968,8 +1029,10 @@ if viewing_saved:
     latest = session_store.slot_latest_snapshot(snap) or snap
     if len(runs) > 1:
         ranking_df = metrics.build_averaged_ranking_from_snapshots(runs, lang)
+    elif compare and model_keys:
+        ranking_df = metrics.build_unified_ranking(compare, model_keys, lang)
     else:
-        ranking_df = session_store.ranking_df_from_snapshot(latest)
+        ranking_df = session_store.ranking_df_from_snapshot(latest, lang)
     compare = latest.get("compare") or snap.get("compare")
     model_keys = latest.get("model_keys") or list(compare.get("diagnoses", {}).keys())
     use_gold_cmp = bool(latest.get("use_gold") or compare.get("mode") == "gold_standard")
@@ -1173,34 +1236,22 @@ if compare is not None:
                         use_container_width=True,
                         key="chart_ranking_clinical",
                     )
-                st.plotly_chart(
-                    charts.fig_privacy_gauges(ranking_df, lang, height=300, **_tier_kw()),
-                    use_container_width=True,
-                    key="chart_privacy_hero",
-                )
             else:
-                rk_col1, rk_col2 = st.columns(2)
-                with rk_col1:
-                    st.plotly_chart(
-                        charts.fig_consensus_ranking_bars(ranking_df, lang, height=280, **_tier_kw()),
-                        use_container_width=True,
-                        key="chart_ranking_hero",
-                    )
-                with rk_col2:
-                    st.plotly_chart(
-                        charts.fig_privacy_gauges(ranking_df, lang, height=300, **_tier_kw()),
-                        use_container_width=True,
-                        key="chart_privacy_hero",
-                    )
+                st.plotly_chart(
+                    charts.fig_consensus_ranking_bars(ranking_df, lang, height=280, **_tier_kw()),
+                    use_container_width=True,
+                    key="chart_ranking_hero",
+                )
+            st.markdown(ui.score_story_html(use_gold_cmp, lang), unsafe_allow_html=True)
+            st.markdown(ui.privacy_strip_html(ranking_df, lang), unsafe_allow_html=True)
 
             consensus_df = metrics.build_consensus_table(
-                compare, model_keys, lang, tier_labels=effective_tier_labels(st.session_state.cloud_tier_labels)
+                compare, model_keys, lang, tier_labels=_tier_labels()
             )
-            st.dataframe(
+            ui.show_model_table(
                 consensus_df,
-                use_container_width=True,
-                hide_index=True,
-                height=ui.table_height(len(consensus_df)),
+                lang,
+                _tier_labels(),
             )
             st.caption(t("ranking.legend", lang))
             if not compare.get("semantic_available"):
@@ -1210,16 +1261,19 @@ if compare is not None:
             if narrative_items:
                 st.markdown(ui.eyebrow_html("📝", t("narrative.section", lang)), unsafe_allow_html=True)
                 st.caption(t("narrative.section_caption", lang))
-                nc1, nc2 = st.columns(2)
-                for i, item in enumerate(narrative_items):
-                    with (nc1 if i % 2 == 0 else nc2):
-                        st.markdown(
-                            ui.narrative_card_html(
-                                item["rank"], item["icon"], item["color"], item["name"],
-                                item["score"], item["bullets"], item["tone"],
-                            ),
-                            unsafe_allow_html=True,
-                        )
+                for item in narrative_items:
+                    st.markdown(
+                        ui.narrative_card_html(
+                            item["rank"],
+                            item["icon"],
+                            item["color"],
+                            item["name"],
+                            item["score"],
+                            item["bullets"],
+                            item["tone"],
+                        ),
+                        unsafe_allow_html=True,
+                    )
         else:
             st.info(t("warn.no_output", lang))
 
@@ -1239,9 +1293,7 @@ if compare is not None:
             st.markdown("#### " + t("kpi.gold_section", lang))
             st.caption(t("kpi.gold_caption", lang))
             gold_df = metrics.build_gold_table(compare, model_keys, lang)
-            st.dataframe(
-                gold_df, use_container_width=True, hide_index=True, height=ui.table_height(len(gold_df))
-            )
+            ui.show_model_table(gold_df, lang, _tier_labels())
             if compare.get("gold", {}).get("gold_diagnoses"):
                 with st.expander(t("kpi.gold_diagnoses", lang)):
                     for i, d in enumerate(compare["gold"]["gold_diagnoses"], 1):
@@ -1288,22 +1340,15 @@ if compare is not None:
         with tab_perf:
             st.caption(t("kpi.performance_caption", lang))
             perf_df = metrics.build_performance_table(display_results, lang)
-            st.dataframe(
-                perf_df,
-                use_container_width=True,
-                hide_index=True,
-                height=ui.table_height(len(perf_df)),
-            )
+            ui.show_model_table(perf_df, lang, _tier_labels())
 
         with tab_triage:
             st.caption(t("kpi.triage_caption", lang))
             urgency_df = metrics.build_urgency_table(compare, model_keys, lang)
-            st.dataframe(
-                urgency_df, use_container_width=True, hide_index=True, height=ui.table_height(len(urgency_df))
-            )
+            ui.show_model_table(urgency_df, lang, _tier_labels())
             st.metric(t("kpi.triage_agreement", lang), f"{compare.get('urgency_agreement', 0.0)}%")
             st.plotly_chart(
-                charts.fig_urgency_compare(compare.get("urgency", {}), lang),
+                charts.fig_urgency_compare(compare.get("urgency", {}), lang, tier_labels=_tier_labels()),
                 use_container_width=True,
                 key="chart_urgency_tab",
             )
@@ -1329,7 +1374,11 @@ if compare is not None:
                 with chart_tab_radar:
                     st.plotly_chart(
                         charts.fig_radar(
-                            ranking_df, use_gold_cmp, lang, sem_available=compare.get("semantic_available", False)
+                            ranking_df,
+                            use_gold_cmp,
+                            lang,
+                            sem_available=compare.get("semantic_available", False),
+                            tier_labels=_tier_labels(),
                         ),
                         use_container_width=True,
                         key="chart_radar",
@@ -1355,7 +1404,9 @@ if compare is not None:
                 with chart_tab_heatmap:
                     if len(model_keys) >= 2:
                         st.plotly_chart(
-                            charts.fig_concordance_heatmap(compare.get("matrix_keyed", {}), model_keys, lang),
+                            charts.fig_concordance_heatmap(
+                                compare.get("matrix_keyed", {}), model_keys, lang, tier_labels=_tier_labels()
+                            ),
                             use_container_width=True,
                             key="chart_heatmap",
                         )
@@ -1373,7 +1424,9 @@ if compare is not None:
                         st.info(t("warn.no_output", lang))
                 with chart_tab_urgency:
                     st.plotly_chart(
-                        charts.fig_urgency_compare(compare.get("urgency", {}), lang),
+                        charts.fig_urgency_compare(
+                            compare.get("urgency", {}), lang, tier_labels=_tier_labels()
+                        ),
                         use_container_width=True,
                         key="chart_urgency_sub",
                     )
@@ -1405,7 +1458,6 @@ if compare is not None:
                 if not avg_df.empty or not gold_df.empty:
                     st.markdown(ui.eyebrow_html("🎬", t("session.finale_title", lang)), unsafe_allow_html=True)
                     st.caption(t("session.finale_caption", lang))
-                    st.caption(t("sidebar.finale_hint", lang))
 
                 fin_col1, fin_col2 = st.columns(2)
                 with fin_col1:
@@ -1418,16 +1470,16 @@ if compare is not None:
                                 n=len([e for e in history if e.get("mode") != "gold_standard"]),
                             )
                         )
-                        st.caption(t("session.finale_avg_rescaled", lang))
                         st.plotly_chart(
                             charts.fig_consensus_ranking_bars(avg_df, lang, height=240, **_tier_kw()),
                             use_container_width=True,
                             key="chart_finale_avg",
                         )
-                        st.dataframe(
-                            avg_df[[L["model"], L["score_cons_rescaled"], L["rank_consensus"]]],
-                            use_container_width=True,
-                            hide_index=True,
+                        ui.show_model_table(
+                            avg_df,
+                            lang,
+                            _tier_labels(),
+                            columns=[L["model"], L["score_cons_rescaled"], L["rank_consensus"]],
                         )
                     else:
                         st.info(t("session.finale_avg_empty", lang))
@@ -1441,10 +1493,11 @@ if compare is not None:
                             use_container_width=True,
                             key="chart_finale_gold",
                         )
-                        st.dataframe(
-                            gold_df[[L["model"], L["score_clin_short"], L["rank_clinical"]]],
-                            use_container_width=True,
-                            hide_index=True,
+                        ui.show_model_table(
+                            gold_df,
+                            lang,
+                            _tier_labels(),
+                            columns=[L["model"], L["score_clin_short"], L["rank_clinical"]],
                         )
                     else:
                         st.info(t("session.finale_gold_empty", lang))
@@ -1452,12 +1505,12 @@ if compare is not None:
                 if history:
                     lb_df = metrics.build_leaderboard_df(history, lang)
                     st.markdown("#### " + t("leaderboard.title", lang))
-                    st.plotly_chart(charts.fig_leaderboard(lb_df, lang), use_container_width=True, key="chart_leaderboard")
-                    st.dataframe(
-                        lb_df.drop(columns=["key"]) if "key" in lb_df.columns else lb_df,
+                    st.plotly_chart(
+                        charts.fig_leaderboard(lb_df, lang, tier_labels=_tier_labels()),
                         use_container_width=True,
-                        hide_index=True,
+                        key="chart_leaderboard",
                     )
+                    ui.show_model_table(lb_df, lang, _tier_labels())
 
         st.markdown(ui.eyebrow_html("🪙", t("decision.section", lang)), unsafe_allow_html=True)
         with st.container(border=True):

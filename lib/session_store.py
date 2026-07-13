@@ -9,7 +9,7 @@ import pandas as pd
 
 from lib.cases import CASE_IDS
 
-CASE5_MAX_RUNS = 4
+CASE5_MAX_RUNS = 10
 SLOTS_FILE = Path(__file__).resolve().parent.parent / ".case_snapshots.json"
 LEGACY_SESSION_FILE = Path(__file__).resolve().parent.parent / ".session_rankings.json"
 
@@ -150,11 +150,13 @@ def slot_latest_snapshot(slot_data: Optional[dict]) -> Optional[dict]:
     return runs[-1] if runs else None
 
 
-def ranking_df_from_snapshot(snapshot: dict) -> pd.DataFrame:
+def ranking_df_from_snapshot(snapshot: dict, lang: str = "en") -> pd.DataFrame:
     records = snapshot.get("ranking_records") or []
     if not records:
         return pd.DataFrame()
-    return pd.DataFrame(records)
+    from lib.metrics import localize_ranking_df
+
+    return localize_ranking_df(pd.DataFrame(records), lang)
 
 
 def slots_as_history(slots: Dict[str, dict]) -> list:
@@ -177,6 +179,10 @@ def slots_as_history(slots: Dict[str, dict]) -> list:
     return history
 
 
+def case5_at_run_cap(slots: Dict[str, dict]) -> bool:
+    return slot_run_count(slots, "case5") >= CASE5_MAX_RUNS
+
+
 def save_slot(slots: Dict[str, dict], case_id: str, snapshot: dict) -> Dict[str, dict]:
     slots = dict(slots)
     snapshot = dict(snapshot)
@@ -191,6 +197,7 @@ def save_slot(slots: Dict[str, dict], case_id: str, snapshot: dict) -> Dict[str,
         existing = slots.get("case5", {})
         runs = slot_runs(existing)
         runs.append(snapshot)
+        # Rolling window: keep only the most recent CASE5_MAX_RUNS snapshots.
         if len(runs) > CASE5_MAX_RUNS:
             runs = runs[-CASE5_MAX_RUNS:]
         slots["case5"] = {

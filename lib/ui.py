@@ -5,9 +5,13 @@ look & feel (glassmorphism, gradients, animations, score badges, KPI tiles)
 is defined and reused consistently everywhere.
 """
 
+from __future__ import annotations
+
 import html
 import re
+from typing import Optional
 
+import pandas as pd
 import streamlit as st
 
 CSS = """
@@ -210,9 +214,10 @@ div.element-container { margin-bottom: 0 !important; }
 .live-chip {
     display: inline-flex; align-items: center; gap: 5px;
     background: rgba(0,208,156,0.12); border: 1px solid rgba(0,208,156,0.35);
-    color: #6ee7c8; font-size: 0.66rem; font-weight: 700; padding: 2px 8px;
+    color: #6ee7c8; font-size: 0.66rem; font-weight: 700; padding: 3px 10px;
     border-radius: 999px; letter-spacing: 0.02em;
     transition: transform 0.25s cubic-bezier(.22,1,.36,1);
+    max-width: 100%; white-space: normal; line-height: 1.35;
 }
 .live-chip:hover { transform: translateY(-1px); }
 .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #00d09c; animation: glowPulse 1.8s infinite; }
@@ -317,33 +322,172 @@ div.element-container { margin-bottom: 0 !important; }
 .status-empty { background: rgba(148,163,184,0.18); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.35); }
 .status-filled { background: rgba(0,208,156,0.18); color: #86efcf; border: 1px solid rgba(0,208,156,0.42); }
 
-/* ---------- ranking narrative cards ---------- */
+/* ---------- ranking narrative cards (compact) ---------- */
 .narrative-card {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-left: 4px solid var(--model-color, var(--accent));
-    border-radius: 12px;
-    padding: 0.65rem 0.9rem;
-    margin-bottom: 0.45rem;
-    backdrop-filter: blur(6px);
-    transition: transform 0.25s cubic-bezier(.22,1,.36,1), border-color 0.25s;
+    border-left: 3px solid var(--model-color, var(--accent));
+    border-radius: 10px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.28rem;
+    transition: border-color 0.25s cubic-bezier(.22,1,.36,1);
 }
-.narrative-card:hover { transform: translateX(2px); }
-.narrative-card.tone-strength { background: linear-gradient(90deg, rgba(0,208,156,0.08), transparent 45%), var(--panel); }
-.narrative-card.tone-watch { background: linear-gradient(90deg, rgba(245,158,11,0.07), transparent 45%), var(--panel); }
-.narrative-head { display: flex; align-items: center; gap: 8px; margin-bottom: 0.3rem; flex-wrap: wrap; }
-.narrative-rank { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
-.narrative-name { font-weight: 800; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 5px; flex: 1 1 120px; min-width: 0; flex-wrap: wrap; }
-.narrative-head .score-badge { flex-shrink: 0; }
+.narrative-card:hover { border-color: var(--border-strong); }
+.narrative-card.tone-strength { background: linear-gradient(90deg, rgba(0,208,156,0.06), transparent 55%), var(--panel); }
+.narrative-card.tone-watch { background: linear-gradient(90deg, rgba(245,158,11,0.05), transparent 55%), var(--panel); }
+.narrative-head { display: flex; align-items: center; gap: 6px; margin-bottom: 0.12rem; flex-wrap: nowrap; }
+.narrative-rank { font-size: 0.9rem; line-height: 1; flex-shrink: 0; }
+.narrative-name { font-weight: 700; font-size: 0.78rem; color: var(--text); display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.narrative-head .score-badge { flex-shrink: 0; font-size: 0.68rem !important; padding: 2px 6px !important; }
 .narrative-name .m-icon {
-    font-size: 0.78rem; width: 20px; height: 20px; border-radius: 6px;
+    font-size: 0.68rem; width: 18px; height: 18px; border-radius: 5px;
     display: inline-flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--model-color, var(--accent)) 16%, transparent);
     flex-shrink: 0;
 }
-.narrative-bullets { margin: 0; padding-left: 1.05rem; font-size: 0.75rem; color: #cbd5e1; line-height: 1.5; }
-.narrative-bullets li { margin-bottom: 0.12rem; }
-.narrative-bullets strong { color: var(--text); }
+.narrative-blurb { margin: 0; font-size: 0.7rem; color: #b4c2d4; line-height: 1.35; }
+.narrative-blurb strong { color: var(--text); font-weight: 600; }
+.narrative-blurb + .narrative-blurb { margin-top: 0.1rem; }
+
+/* ---------- privacy strip (readable scale 0–100) ---------- */
+.privacy-strip {
+    margin: 0.35rem 0 0.5rem;
+    padding: 0.5rem 0.65rem 0.55rem;
+    background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.privacy-strip-head {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+}
+.privacy-strip-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+.privacy-chip {
+    min-width: 0;
+    padding: 0.35rem 0.42rem 0.38rem;
+    border-radius: 9px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(148,163,184,0.18);
+}
+.privacy-chip--zero {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.06);
+}
+.privacy-chip--full {
+    border-color: rgba(0, 208, 156, 0.45);
+    background: rgba(0, 208, 156, 0.08);
+}
+.privacy-chip-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    line-height: 1.15;
+    margin-bottom: 0.28rem;
+}
+.privacy-chip-name {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: var(--pc, var(--text));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.privacy-chip-val {
+    font-size: 0.92rem;
+    font-weight: 900;
+    color: var(--text);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.privacy-chip--zero .privacy-chip-val { color: #fca5a5; }
+.privacy-chip--full .privacy-chip-val { color: #6ee7b7; }
+.privacy-chip-track {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.28rem;
+}
+.privacy-scale-edge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    min-width: 1.1rem;
+}
+.privacy-scale-edge--min {
+    color: #f87171;
+    text-align: right;
+}
+.privacy-scale-edge--max {
+    color: #34d399;
+    text-align: left;
+}
+.privacy-chip-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(239,68,68,0.22) 0%, rgba(148,163,184,0.16) 50%, rgba(0,208,156,0.28) 100%);
+    overflow: hidden;
+    border: 1px solid rgba(148,163,184,0.12);
+}
+.privacy-chip-bar span {
+    display: block;
+    height: 100%;
+    background: var(--pc, var(--accent));
+    border-radius: 999px;
+    min-width: 2px;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--pc, var(--accent)) 45%, transparent);
+}
+.privacy-strip-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.32rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    line-height: 1.3;
+}
+.privacy-strip-foot span:first-child { color: #fca5a5; }
+.privacy-strip-foot span:last-child { color: #6ee7b7; text-align: right; }
+.privacy-strip-caption {
+    margin: 0.28rem 0 0;
+    font-size: 0.68rem;
+    color: #94a3b8;
+    line-height: 1.35;
+}
+
+/* ---------- score story (demo / KPI weights) ---------- */
+.score-story {
+    margin: 0.35rem 0 0.45rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 12px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.12), rgba(15, 23, 42, 0.35));
+}
+.score-story-title {
+    font-size: 0.76rem;
+    font-weight: 800;
+    color: #bfdbfe;
+    margin-bottom: 0.35rem;
+    letter-spacing: 0.02em;
+}
+.score-story-block {
+    margin: 0 0 0.32rem;
+    font-size: 0.72rem;
+    color: #cbd5e1;
+    line-height: 1.45;
+}
+.score-story-block:last-child { margin-bottom: 0; }
+.score-story-block strong { color: #f1f5f9; font-weight: 700; }
 
 /* ---------- tier / model badges ---------- */
 .tier-light  { background:rgba(107,114,128,0.22); color:#cbd5e1; padding:2px 8px; border:1px solid rgba(148,163,184,0.35); border-radius:999px; font-size:0.62rem; font-weight:700; }
@@ -629,6 +773,82 @@ hr { border-color: var(--border) !important; margin: 0.5rem 0 !important; }
 .slot-dot--empty { background: #64748b; }
 .slot-dot--filled { background: #34d399; }
 .slot-dot--viewing { background: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.35); }
+
+/* ---------- sidebar finale ranking (highlight) ---------- */
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-finale-marker) {
+    margin-top: 0.35rem !important;
+    margin-bottom: 0.35rem !important;
+    border-color: rgba(245, 158, 11, 0.55) !important;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.24), rgba(234, 88, 12, 0.14)) !important;
+    box-shadow: inset 0 1px 0 rgba(253, 224, 71, 0.22);
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-finale-marker) button {
+    color: #1c1917 !important;
+    border-color: rgba(253, 224, 71, 0.75) !important;
+    background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%) !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.01em;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-finale-marker) button:hover {
+    color: #0c0a09 !important;
+    background: linear-gradient(135deg, #fde047 0%, #fb923c 100%) !important;
+    border-color: #fef08a !important;
+    box-shadow: 0 0 0 1px rgba(253, 224, 71, 0.35), 0 6px 18px -8px rgba(249, 115, 22, 0.65);
+}
+
+/* ---------- sidebar danger zone (clear saved only) ---------- */
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-danger-zone-marker) {
+    margin-top: 2rem !important;
+    border-color: rgba(239, 68, 68, 0.45) !important;
+    background: rgba(15, 10, 10, 0.35) !important;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(.sidebar-danger-zone-marker) [data-testid="stCaption"] p {
+    color: #fca5a5 !important;
+    font-size: 0.66rem !important;
+    line-height: 1.35 !important;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-danger-zone-marker) button {
+    color: #ef4444 !important;
+    border-color: rgba(239, 68, 68, 0.7) !important;
+    background: rgba(127, 29, 29, 0.35) !important;
+    font-weight: 800 !important;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]:has(.sidebar-danger-zone-marker) button:hover {
+    color: #fff !important;
+    background: #b91c1c !important;
+    border-color: #fca5a5 !important;
+}
+
+/* ---------- tables: readable text, compact rows ---------- */
+[data-testid="stDataFrame"] div[data-testid="glideDataEditor"] {
+    font-size: 0.82rem !important;
+}
+[data-testid="stDataFrame"] [role="gridcell"] {
+    white-space: normal !important;
+    line-height: 1.35 !important;
+    word-break: break-word !important;
+}
+[data-testid="stDataFrame"] [role="columnheader"] {
+    white-space: normal !important;
+    line-height: 1.25 !important;
+    word-break: break-word !important;
+    font-weight: 700 !important;
+}
+
+/* dialog: red confirm for destructive clear-saved */
+[data-testid="stDialog"] [data-testid="stVerticalBlock"]:has(.dialog-danger-confirm-marker) button {
+    background: #b91c1c !important;
+    border: 1px solid #fca5a5 !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+}
+[data-testid="stDialog"] [data-testid="stVerticalBlock"]:has(.dialog-danger-confirm-marker) button:hover {
+    background: #dc2626 !important;
+    border-color: #fff !important;
+}
+
+.narrative-name { flex-wrap: wrap; word-break: break-word; }
+.model-card-name { flex-wrap: wrap; word-break: break-word; }
 </style>
 """
 
@@ -739,12 +959,80 @@ def _md_bold(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
 
 
+def privacy_strip_html(ranking_df: pd.DataFrame, lang: str = "en") -> str:
+    """Privacy row with 0–100 scale per model — bigger than micro-strip, smaller than Plotly gauges."""
+    from lib.i18n import t
+    from lib.metrics import TABLE_MODEL_SHORT, _L
+    from lib.tiers import MODEL_CONFIG
+
+    if ranking_df.empty:
+        return ""
+
+    L = _L(lang)
+    chips = []
+    for _, row in ranking_df.iterrows():
+        key = row.get("key", "")
+        cfg = MODEL_CONFIG.get(key, {})
+        try:
+            pct = int(float(row.get(L["privacy"], 0) or 0))
+        except (TypeError, ValueError):
+            pct = 0
+        pct = max(0, min(100, pct))
+        color = cfg.get("color", "#94a3b8")
+        name = TABLE_MODEL_SHORT.get(key, str(row.get(L["model"], key)))
+        chip_cls = "privacy-chip--full" if pct >= 100 else ("privacy-chip--zero" if pct <= 0 else "")
+        chips.append(
+            f'<div class="privacy-chip {chip_cls}" style="--pc:{html.escape(color)};">'
+            f'<div class="privacy-chip-top">'
+            f'<span class="privacy-chip-name">{html.escape(name)}</span>'
+            f'<span class="privacy-chip-val">{pct}%</span>'
+            f"</div>"
+            f'<div class="privacy-chip-track">'
+            f'<span class="privacy-scale-edge privacy-scale-edge--min">{html.escape(t("chart.privacy_scale_low", lang))}</span>'
+            f'<div class="privacy-chip-bar"><span style="width:{pct}%;"></span></div>'
+            f'<span class="privacy-scale-edge privacy-scale-edge--max">{html.escape(t("chart.privacy_scale_high", lang))}</span>'
+            f"</div>"
+            f"</div>"
+        )
+
+    return (
+        f'<div class="privacy-strip fade-in">'
+        f'<div class="privacy-strip-head">🔒 {html.escape(t("chart.privacy_title", lang))}</div>'
+        f'<div class="privacy-strip-row">{"".join(chips)}</div>'
+        f'<div class="privacy-strip-foot">'
+        f'<span>0% · {html.escape(t("chart.privacy_scale_cloud", lang))}</span>'
+        f'<span>100% · {html.escape(t("chart.privacy_scale_local", lang))}</span>'
+        f"</div>"
+        f'<p class="privacy-strip-caption">{_md_bold(t("chart.privacy_caption", lang))}</p>'
+        f"</div>"
+    )
+
+
+def score_story_html(use_gold: bool, lang: str = "en") -> str:
+    """Demo-friendly explanation of 0–100 scores and weighted KPIs."""
+    from lib.i18n import t
+
+    blocks = [f'<p class="score-story-block">{_md_bold(t("ranking.score_story_gold_intro" if use_gold else "ranking.score_story_consensus_intro", lang))}</p>']
+    if use_gold:
+        blocks.append(f'<p class="score-story-block">{_md_bold(t("ranking.score_story_gold_clinical", lang))}</p>')
+        blocks.append(f'<p class="score-story-block">{_md_bold(t("ranking.score_story_gold_consensus", lang))}</p>')
+    else:
+        blocks.append(f'<p class="score-story-block">{_md_bold(t("ranking.score_story_consensus_formula", lang))}</p>')
+
+    return (
+        f'<div class="score-story fade-in">'
+        f'<div class="score-story-title">📖 {html.escape(t("ranking.score_story_title", lang))}</div>'
+        f'{"".join(blocks)}'
+        f"</div>"
+    )
+
+
 def narrative_card_html(
     rank: int, icon: str, color: str, name: str, score: float, bullets: list, tone: str = "neutral"
 ) -> str:
-    """Renders one model's auto-generated 'why this ranking' explanation card."""
+    """Compact one-line (max two) takeaway per model."""
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"#{rank}")
-    bullets_html = "".join(f"<li>{_md_bold(b)}</li>" for b in bullets)
+    blurbs = "".join(f'<p class="narrative-blurb">{_md_bold(b)}</p>' for b in (bullets or [])[:2])
     return (
         f'<div class="narrative-card fade-in tone-{tone}" style="--model-color:{color};">'
         f'<div class="narrative-head">'
@@ -752,16 +1040,51 @@ def narrative_card_html(
         f'<span class="narrative-name"><span class="m-icon">{icon}</span>{html.escape(name)}</span>'
         f"{score_badge_html(score)}"
         f"</div>"
-        f'<ul class="narrative-bullets">{bullets_html}</ul>'
+        f"{blurbs}"
         f"</div>"
     )
 
 
-def table_height(n_rows: int, row_px: int = 35, header_px: int = 38, pad_px: int = 3) -> int:
+def table_height(n_rows: int, row_px: int = 48, header_px: int = 42, pad_px: int = 6) -> int:
     """Exact pixel height to show every row of a dataframe with no internal
     scrollbar — used for the small (2-5 model) KPI tables where an inner
     scroll arrow only hides data the user should see at a glance."""
     return header_px + row_px * max(n_rows, 1) + pad_px
+
+
+def model_table_column_config(lang: str) -> dict:
+    """Streamlit column widths for Model + Version (full tier text, no clipping)."""
+    from lib.metrics import _L
+
+    L = _L(lang)
+    return {
+        L["model"]: st.column_config.TextColumn(L["model"], width="small"),
+        L["version"]: st.column_config.TextColumn(
+            L["version"], width="medium", help=None
+        ),
+    }
+
+
+def show_model_table(
+    df: pd.DataFrame,
+    lang: str,
+    tier_labels: Optional[dict] = None,
+    columns: Optional[list] = None,
+    **dataframe_kwargs,
+) -> None:
+    """Render a KPI table with Model + Version columns (no forced height — avoids blank rows)."""
+    from lib.metrics import prepare_model_table
+
+    display = prepare_model_table(df, lang, tier_labels, columns=columns)
+    if display.empty:
+        return
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        column_config=model_table_column_config(lang),
+        **dataframe_kwargs,
+    )
 
 
 def eyebrow_html(icon: str, title: str) -> str:

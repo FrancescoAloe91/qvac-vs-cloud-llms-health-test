@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from itertools import combinations
+from typing import Optional
 
 from lib import embeddings
 
@@ -189,7 +190,45 @@ def build_clinical_profile(text: str, diagnoses: list[str], urgency: dict) -> di
         "management": management[:400],
         "summary": summary,
         "urgency_label": urgency_label,
+        "urgency_compare": (
+            urgency_snippet
+            if urgency_snippet
+            else (
+                f"Clinical urgency/triage level: {urgency_label}"
+                if urgency_label not in (None, "unknown")
+                else text[:200]
+            )
+        )[:200],
     }
+
+
+_URGENCY_ORDER = {"critical": 4, "high": 3, "moderate": 2, "low": 1, None: 0, "unknown": 0}
+
+
+def urgency_label_similarity(label_a: str, label_b: str) -> float:
+    """Continuous 0–100 from severity distance (linear, not stair-steps)."""
+    if not label_b or label_b == "unknown":
+        return 50.0
+    if not label_a or label_a == "unknown":
+        return 50.0
+    if label_a == label_b:
+        return 100.0
+    diff = abs(_URGENCY_ORDER.get(label_a, 0) - _URGENCY_ORDER.get(label_b, 0))
+    return round(max(0.0, 100.0 - (diff / 3.0) * 100.0), 1)
+
+
+def weighted_dimension_composite(parts: list[tuple[float, float]]) -> Optional[float]:
+    """True weighted mean of dimension scores (each 0–100). Skips missing dims."""
+    total = 0.0
+    weight_sum = 0.0
+    for val, weight in parts:
+        if val is None:
+            continue
+        total += float(val) * weight
+        weight_sum += weight
+    if weight_sum <= 0:
+        return None
+    return round(total / weight_sum, 1)
 
 
 def _pairwise_dimension_scores(keys: list, texts: dict) -> tuple[dict, dict, bool]:
@@ -216,27 +255,33 @@ def _pairwise_dimension_scores(keys: list, texts: dict) -> tuple[dict, dict, boo
     return scores, pairs, any_ok
 
 
-def urgency_agreement_scores(keys: list, labels: dict) -> dict:
-    """How well each model's declared urgency matches the group majority."""
-    present = [labels[k] for k in keys if labels.get(k)]
+def urgency_agreement_scores(
+    keys: list, labels: dict, profiles: Optional[dict] = None
+) -> dict:
+    """Urgency dimension 0–100: semantic text match vs peers + label alignment."""
+    present = [labels[k] for k in keys if labels.get(k) and labels[k] != "unknown"]
     if not present:
         return {k: None for k in keys}
     majority = max(set(present), key=present.count)
-    order = {"critical": 4, "high": 3, "moderate": 2, "low": 1, None: 0, "unknown": 0}
 
-    def _urgency_score(label):
-        if label is None or label == "unknown":
-            return 50.0
-        if label == majority:
-            return 100.0
-        diff = abs(order.get(label, 0) - order.get(majority, 0))
-        if diff == 1:
-            return 70.0
-        if diff == 2:
-            return 40.0
-        return 10.0
+    label_scores = {
+        k: urgency_label_similarity(labels.get(k), majority) for k in keys
+    }
 
-    return {k: round(_urgency_score(labels.get(k)), 1) for k in keys}
+    if profiles:
+        urg_texts = {k: (profiles.get(k) or {}).get("urgency_compare", "") for k in keys}
+        sem_scores, _, sem_ok = _pairwise_dimension_scores(keys, urg_texts)
+        if sem_ok:
+            return {
+                k: round(
+                    0.65 * sem_scores[k] + 0.35 * label_scores[k], 1
+                )
+                if sem_scores.get(k) is not None
+                else label_scores[k]
+                for k in keys
+            }
+
+    return label_scores
 
 
 def compute_clinical_kpis(active: dict, diagnoses: dict, urgency: dict) -> dict:
@@ -256,25 +301,22 @@ def compute_clinical_kpis(active: dict, diagnoses: dict, urgency: dict) -> dict:
     summary_scores, summary_pairs, summary_ok = _pairwise_dimension_scores(
         keys, {k: profiles[k]["summary"] for k in keys}
     )
-    urg_scores = urgency_agreement_scores(keys, {k: profiles[k]["urgency_label"] for k in keys})
+    urg_scores = urgency_agreement_scores(
+        keys, {k: profiles[k]["urgency_label"] for k in keys}, profiles
+    )
 
     semantic_available = dx_ok or mgmt_ok or summary_ok
 
-    # Per-model composite — weights favour meaning over exact wording.
     composite = {}
     for k in keys:
-        parts = []
-        weights = []
-        for val, w in [
-            (dx_scores.get(k), 0.35),
-            (mgmt_scores.get(k), 0.25),
-            (summary_scores.get(k), 0.25),
-            (urg_scores.get(k), 0.15),
-        ]:
-            if val is not None:
-                parts.append(val * w)
-                weights.append(w)
-        composite[k] = round(sum(parts) / sum(weights), 1) if weights else 0.0
+        composite[k] = weighted_dimension_composite(
+            [
+                (dx_scores.get(k), 0.40),
+                (mgmt_scores.get(k), 0.30),
+                (urg_scores.get(k), 0.20),
+                (summary_scores.get(k), 0.10),
+            ]
+        )
 
     return {
         "available": semantic_available,

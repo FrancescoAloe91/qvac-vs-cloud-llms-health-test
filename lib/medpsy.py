@@ -46,15 +46,8 @@ def runtime_header_chip() -> str:
     """Short label for the top header live chip."""
     return f"MedPsy-4B {quant_label()} · Ollama {OLLAMA_MODEL} · on-device"
 
-# Sampling — cloud-like: same case → clinically similar answers, not byte-identical.
-# No fixed seed: each Run benchmark draws a fresh sample (like ChatGPT/Claude/Gemini).
-# Temperature ~0.55 keeps diagnoses stable while wording and detail order can shift.
-_INFERENCE_OPTIONS = {
-    "num_predict": 2400,
-    "temperature": float(os.environ.get("QVAC_TEMPERATURE", "0.55")),
-    "top_k": 40,
-    "top_p": 0.92,
-}
+# Inference uses Ollama Modelfile defaults only (temperature 0.6, top_k 20, top_p 0.95).
+# The dashboard does not override sampling — honest demo = same stack as setup_medpsy.sh.
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
@@ -115,17 +108,11 @@ def stream_inference(prompt: str) -> Generator[dict, None, None]:
     On any failure, yields a single {"done": True, "error": str} event —
     never a fabricated diagnosis.
     """
-    num_predict = _INFERENCE_OPTIONS["num_predict"]
-    options = {k: v for k, v in _INFERENCE_OPTIONS.items() if k != "num_predict"}
-    # Optional reproducibility for debugging only — leave unset for natural variance.
-    if os.environ.get("QVAC_SEED"):
-        options["seed"] = int(os.environ["QVAC_SEED"])
     payload = json.dumps(
         {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
             "stream": True,
-            "options": {"num_predict": num_predict, **options},
         }
     ).encode("utf-8")
 

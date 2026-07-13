@@ -55,6 +55,7 @@ FROM ./$Quant
 PARAMETER temperature 0.6
 PARAMETER top_k 20
 PARAMETER top_p 0.95
+PARAMETER num_predict 2400
 PARAMETER num_ctx 4096
 PARAMETER num_gpu 0
 "@ | Set-Content -Path (Join-Path $ModelsDir "Modelfile") -Encoding UTF8

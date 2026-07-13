@@ -17,7 +17,7 @@ _STRINGS = {
         "sidebar.reset_help": "Clear everything including wallet to 0 USDT",
         "sidebar.cloud_tiers": "Cloud model versions",
         "sidebar.cloud_tiers_help": "Shown on cards and charts. Claude shows model + thinking in the chat bar; ChatGPT free often hides the model name — note what you see before pasting.",
-        "sidebar.cloud_tiers_howto": "**How to check:** Claude → model name + thinking (e.g. Sonnet · Medium) in the top bar. ChatGPT → free tier often shows no model; optional: ask \"Which model are you?\" once. Gemini → model picker bottom-left if available.",
+        "sidebar.cloud_tiers_howto": "**How to check:** Claude → model name + thinking (e.g. Sonnet · Extra) in the top bar. ChatGPT → free tier often shows no model; optional: ask \"Which model are you?\" once. Gemini → model picker bottom-left if available.",
         "sidebar.cloud_tiers_save": "Save version labels",
         "sidebar.cloud_tiers_saved": "Cloud version labels saved",
         "sidebar.cloud_tiers_qvac_auto": "Auto-detected from your local setup (GGUF quant + Ollama model tag).",
@@ -32,15 +32,17 @@ _STRINGS = {
         "sidebar.vlm_extract": "Extract text",
         "sidebar.vlm_add": "Add to case",
         "sidebar.saved_cases": "Saved case results",
-        "sidebar.saved_cases_help": "Load or recall cases here — this is the only case navigator. Green = saved result ready to recall.",
+        "sidebar.saved_cases_help": "Load or recall saved benchmark results. Green = ready to recall.",
         "sidebar.save_slot": "Save current benchmark",
         "sidebar.save_slot_help": "Stores charts + table for the active case (overwrites if saved again).",
         "sidebar.save_slot_toast": "**{case}** saved — click the slot anytime to recall it.",
         "sidebar.save_case5_run": "💾 Save run {n}/{max}",
-        "sidebar.save_case5_help": "Case 5 stores up to **{max}** benchmark runs; clinical scores are averaged automatically in the finale.",
-        "sidebar.save_case5_run_toast": "Run **{n}/{max}** saved — finale uses the average of all saved runs.",
-        "sidebar.case5_runs": "{n}/{max} runs saved · averaged in finale",
-        "sidebar.viewing_case5_avg": "average of {n} runs",
+        "sidebar.save_case5_run_rolling": "💾 Save new run (last {max} kept)",
+        "sidebar.save_case5_help": "Case 5 keeps the **last {max}** benchmark runs; older saves are dropped. Clinical scores use a rolling average of those runs.",
+        "sidebar.save_case5_run_toast": "Run **{n}/{max}** saved — finale uses the rolling average of the last {max} runs.",
+        "sidebar.save_case5_run_toast_rolling": "Run saved — oldest dropped; finale averages the last **{max}** runs.",
+        "sidebar.case5_runs": "{n}/{max} runs kept · rolling average in finale",
+        "sidebar.viewing_case5_avg": "rolling average of last {n} runs",
         "sidebar.slot_badge_empty": "Empty",
         "sidebar.slot_badge_filled": "Saved",
         "sidebar.slot_badge_viewing": "Viewing",
@@ -52,8 +54,8 @@ _STRINGS = {
         "sidebar.saved_count_inline": "{n}/{total}",
         "sidebar.finale_btn": "FINAL AVERAGED RANKING",
         "sidebar.finale_title": "Final averaged ranking",
-        "sidebar.finale_hint": "Use the sidebar button **FINAL AVERAGED RANKING** for the popup finale.",
         "sidebar.clear_saved": "Reset saved results",
+        "sidebar.clear_saved_help": "Deletes all saved case snapshots (cases 1–5). Cannot be undone.",
         "sidebar.clear_saved_title": "Clear all saved case results?",
         "sidebar.clear_saved_body": "Removes every saved snapshot (cases 1–5). The current benchmark and wallet are **not** affected.",
         "sidebar.clear_saved_confirm": "Yes, clear saved",
@@ -83,7 +85,7 @@ _STRINGS = {
         "gold.use": "Use confirmed clinical diagnosis as reference",
         "gold.help": "When enabled, ranking measures deviation from this diagnosis. When disabled, inter-model consensus is used.",
         "gold.caption": "You may use your real pathology in **anonymized** form (no name, dates, hospital, city). Example: «Confirmed diagnosis: relapsing-remitting multiple sclerosis» or paste a de-identified report.",
-        "gold.qvac_variance": "QVAC is a 4B on-device model: save **3–4 runs** (re-launch benchmark each time) — the finale averages them for a stable clinical score.",
+        "gold.qvac_variance": "QVAC is a 4B on-device model: each **Run benchmark** calls Ollama with **Modelfile defaults only** (temperature 0.6, top_k 20, top_p 0.95, no seed). Save up to **{max} runs** — the finale uses a rolling average for a stable clinical score.",
         "gold.input": "Correct diagnosis / reference report",
         "gold.placeholder": "E.g. Confirmed diagnosis: acute coronary syndrome (NSTEMI). Labs: positive troponin, ECG with ST elevation...",
         "output.section": "Diagnostic output — paste cloud responses here",
@@ -122,16 +124,52 @@ _STRINGS = {
             "Clinical chart shows **absolute** match with your confirmed diagnosis — "
             "100% only if the model aligns perfectly with the reference, not by relative scaling."
         ),
+        "ranking.score_story_title": "What 0–100% measures (demo)",
+        "ranking.score_story_gold_intro": (
+            "You enabled a **confirmed reference diagnosis** — the dashboard shows **two independent scores**. "
+            "Both use **local semantic embeddings** (meaning, not copy-paste wording)."
+        ),
+        "ranking.score_story_gold_clinical": (
+            "**Ref.% / Clinical chart (absolute 0–100)** — how close each answer is to **your real reference**: "
+            "**40%** diagnosis & differential · **30%** plan & next steps · **20%** urgency/triage · **10%** clinical summary. "
+            "**100%** = same clinical meaning as the reference; **0%** = unrelated."
+        ),
+        "ranking.score_story_gold_consensus": (
+            "**Cons.% / Consensus chart (relative)** — who agrees most with the **other LLMs** on this case: "
+            "**40%** diagnosis · **30%** plan · **20%** urgency · **10%** summary — then **#1 is rescaled to 100%**. "
+            "Measures group agreement, not correctness vs ground truth."
+        ),
+        "ranking.score_story_consensus_intro": (
+            "**No confirmed diagnosis this round** — scores measure **inter-model agreement**, not medical correctness."
+        ),
+        "ranking.score_story_consensus_formula": (
+            "**Cons.% (0–100)** = **true weighted average** of four continuous dimension scores (0–100 each, from local embeddings): "
+            "**40%** diagnosis · **30%** plan & next steps · **20%** urgency · **10%** clinical summary — "
+            "then **#1 in the group = 100%** (relative rescale only on Cons.%). "
+            "Enable **confirmed diagnosis** above for the **absolute** clinical match vs your real case. "
+            "Use **🔍 See exactly how every score was calculated** to audit the numbers."
+        ),
+        "chart.privacy_scale_low": "0",
+        "chart.privacy_scale_high": "100",
+        "chart.privacy_scale_cloud": "cloud",
+        "chart.privacy_scale_local": "on-device",
+        "chart.privacy_caption": "0% = answer pasted from a cloud site (case left the device) · 100% = QVAC MedPsy ran fully on-device.",
         "ranking.legend": (
-            "**Consensus score %** = weighted blend of diagnosis match (35%), plan & next steps (25%), "
-            "clinical summary (25%), urgency agreement (15%) — **rescaled so #1 in the group = 100%**. "
+            "**Consensus score %** = weighted blend of diagnosis match (40%), plan & next steps (30%), "
+            "urgency agreement (20%), clinical summary (10%) — **rescaled so #1 in the group = 100%**. "
             "When a confirmed diagnosis is set, **Ref.%** and the clinical chart are **absolute** "
             "(100% = perfect match with your reference — never rescaled). "
             "**Cons.%** alone is rescaled (#1 = 100%) because there is no ground truth. "
-            "**Privacy** is a separate plus — gauge only, never in any score."
+            "**Privacy** row (0–100) is informational only — not part of any clinical or consensus score."
         ),
         "narrative.section": "Why this ranking?",
-        "narrative.section_caption": "Auto-generated from the same metrics above — no manual editing, no hidden scoring. TPS/TTFT aren't available for cloud sites without an API, so this focuses on what can be measured honestly: the actual diagnostic content each model produced.",
+        "narrative.section_caption": "Short summary per model.",
+        "narrative.compact_leader": "Group leader — **{score}%** consensus.",
+        "narrative.compact_leader_clinical": "Best match vs reference — **{score}%**.",
+        "narrative.compact_laggard": "Lowest here — **#{rank}** at **{score}%**.",
+        "narrative.compact_mid": "Rank **#{rank}** — **{score}%**.",
+        "narrative.compact_dual": "Consensus **#{rank_cons}** ({score_cons}%) · Clinical **#{rank_clin}** ({score_clin}%).",
+        "narrative.compact_urgency_diff": "Urgency **{label}** (group: **{majority}**).",
         "narrative.verdict_high": "Consensus score **{score}/100** — strong agreement with the rest of the group, both in wording and in clinical meaning{sem_clause}.",
         "narrative.verdict_mid": "Consensus score **{score}/100** — decent agreement with the group, with some differences in phrasing or emphasis{sem_clause}.",
         "narrative.verdict_low": "Consensus score **{score}/100** — this answer diverges more from the group on this case{sem_clause}.",
@@ -156,7 +194,7 @@ _STRINGS = {
         "charts.tab_radar": "Multidimensional radar",
         "charts.tab_bars": "Bar ranking",
         "charts.tab_dims": "Dimension breakdown",
-        "charts.dims_privacy_note": "The dimension-breakdown bar chart and privacy gauges are always visible in the KPI breakdown section above — this tab has the deeper-dive views.",
+        "charts.dims_privacy_note": "Dimension breakdown is in this tab — privacy is already shown compactly above the ranking charts.",
         "decision.section": "Decision & compliance",
         "decision.lead": "Now that you've seen the results side by side — which path would you actually pick for this case?",
         "decision.cloud": "Cloud",
@@ -187,6 +225,7 @@ _STRINGS = {
         "matrix.pair": "Pair",
         "matrix.concordance": "Concordance %",
         "cols.model": "Model",
+        "cols.version": "Version",
         "cols.tier_requested": "Tier requested",
         "cols.tier": "Tier",
         "cols.local": "Local",
@@ -227,7 +266,7 @@ _STRINGS = {
         "chart.dims_title": "KPI dimension breakdown",
         "chart.score_pct": "Score %",
         "chart.acc_cons_short": "Cons. accuracy",
-        "chart.privacy_title": "On-device privacy score by model",
+        "chart.privacy_title": "On-device privacy",
         "chart.heatmap_title": "Pairwise diagnostic concordance heatmap",
         "chart.keywords_title": "Shared clinical consensus keywords",
         "chart.keywords_axis": "Models mentioning this term",
@@ -268,7 +307,7 @@ _STRINGS = {
         "case.focus.case4": "Distinguish a manic switch from substance-induced mania and catch the lithium/renal conflict.",
         "case.focus.case5": "Paste your own anonymized case to benchmark a real scenario.",
         "case.custom_hint": "Custom case — select a slot in the **left sidebar** to load a preset.",
-        "case.sidebar_nav_hint": "← Select, load or recall cases from the **left sidebar** slots.",
+        "case.sidebar_nav_hint": "Select, load or recall cases from the left sidebar.",
         "case.short.case1": "Chest pain",
         "case.short.case2": "MS · MRI",
         "case.short.case3": "Appendicitis",
@@ -326,27 +365,43 @@ _STRINGS = {
         "kpi.consensus_avg_help": "Blend of Reliability (whole differential-list overlap with every other model), Accuracy (top-diagnosis-only overlap with every other model) and Semantic similarity (meaning-level match via a local embedding model, so paraphrasing isn't punished). This is an **agreement** score, not a correctness score — see below.",
         "kpi.semantic_unavailable": "ℹ️ Semantic similarity (the meaning-level KPI) needs the local embedding model — start it with the setup script to unlock this third signal; scores above use only Reliability + Accuracy in the meantime.",
         "kpi.glance_title": "📊 Full KPI breakdown — always visible, no clicks needed",
-        "kpi.glance_caption": "The exact numbers behind the ranking above: how much each model agrees with the group (table + bar chart) and how much of the case stayed on-device (privacy gauges). Click any KPI tile above for a plain-language reminder of what it measures.",
+        "kpi.glance_caption": "Consensus tables for this case. Privacy is the compact row under the ranking charts.",
         "kpi.mode_note_consensus": "**No confirmed diagnosis was provided for this round** → scores below are an **agreement score (0-100%)**: how much the models' answers overlap with each other in wording and meaning. Without a ground truth, this measures *consensus*, not *correctness* — 100% would mean word-for-word, meaning-for-meaning identical answers, which is rare even when everyone is clinically right. Paste a confirmed diagnosis in the section above to unlock the 1-10 **clinical grade**.",
         "kpi.mode_note_gold": "**Confirmed reference diagnosis active** → clinical ranking is **absolute** (not rescaled to 100%). Score = semantic match on diagnosis, plan, urgency and summary vs your reference — paraphrases in another language score high; word-for-word copy is **not** required.",
         "kpi.explain_button": "🔍 See exactly how every score was calculated",
         "explain.dialog_title": "🔍 How every score was calculated",
-        "explain.dialog_intro": "No hidden numbers: every component below is a real, reproducible calculation from the pasted text — nothing is estimated or invented.",
+        "explain.dialog_intro": (
+            "No hidden numbers: each dimension is a continuous 0–100% from local semantic embeddings "
+            "(cosine similarity on extracted clinical text). The displayed score is the **literal weighted average** "
+            "shown below — Cons.% is then rescaled so #1 = 100%."
+        ),
+        "explain.consensus_label": "Consensus score (Cons.%)",
+        "explain.consensus_desc": (
+            "Four clinical slices compared pairwise vs every other model: diagnosis block, plan/next steps, "
+            "clinical summary, and urgency (65% semantic text + 35% triage label). "
+            "Each value is a continuous 0–100% — not fixed steps like 100/75/50/0."
+        ),
+        "explain.consensus_rescale_note": (
+            "Cons_raw is the weighted average above. Cons.% in the table rescales vs the leader this round "
+            "(#1 → 100%) — Ref.% in gold mode is **not** rescaled."
+        ),
+        "explain.dimension_pairs": "{dim} — pairwise similarity vs other models",
         "explain.reliability_label": "① Reliability — pairwise agreement",
         "explain.reliability_desc": "Average overlap between this model's differential diagnosis and each other model's, blending list-level overlap (65%) with whole-text keyword overlap (35%).",
         "explain.accuracy_label": "② Accuracy (consensus) — keyword match",
         "explain.accuracy_desc": "Average keyword overlap between this model's primary (top) diagnosis and each other model's primary diagnosis — same idea as Reliability, but focused only on the single top pick instead of the whole differential list.",
         "explain.semantic_label": "③ Semantic similarity — meaning match",
         "explain.semantic_desc": "Cosine similarity between this model's primary diagnosis and each other model's, computed by a local embedding model (all-minilm) — this is what catches \"same diagnosis, different words\".",
-        "explain.semantic_unavailable_note": "Not available this round (local embedding model unreachable) — Final score used a 50/50 blend of Reliability + Accuracy instead of the 30/30/40 blend.",
+        "explain.semantic_unavailable_note": (
+            "Local embedding model unreachable this round — consensus falls back to keyword reliability/accuracy blend."
+        ),
         "explain.gold_label": "④ Vs. confirmed reference diagnosis",
-        "explain.gold_desc": "Measured against your confirmed reference using **meaning**, not word overlap: diagnosis (42%), plan & next steps (33%), urgency (15%), overall clinical summary (10%). Same diagnosis in different words scores high.",
+        "explain.gold_desc": "Measured against your confirmed reference using **meaning**, not word overlap: diagnosis (40%), plan & next steps (30%), urgency (20%), overall clinical summary (10%). Same diagnosis in different words scores high.",
         "explain.grade_label": "Clinical grade",
         "explain.grade_rubric": "Rescaled 0-100% clinical score → familiar 1-10 grade: **1** = unrelated to the reference · **5** ≈ partially right (same category, different specific diagnosis) · **10** = matches the reference almost exactly in wording and meaning, with the full differential covered.",
         "explain.formula_label": "Formula",
-        "explain.formula_consensus_3": "{score} = 25%×{rel} (reliability) + 25%×{acc} (accuracy) + 50%×{sem} (semantic)",
-        "explain.formula_consensus_2": "{score} = 50%×{rel} (reliability) + 50%×{acc} (accuracy) — semantic unavailable this round",
-        "explain.formula_final_gold": "Clinical {gold}% = weighted semantic match (diagnosis + plan + urgency + summary) — no reward for copying exact words",
+        "explain.formula_consensus_dim": "Cons_raw = {formula}\n= {raw}%\nCons_display = {rescaled}% (rescaled vs #1 this round)",
+        "explain.formula_gold_dim": "Ref = {formula}\n= {score}% (absolute — not rescaled)",
         "explain.own_keywords": "This model's primary-diagnosis keywords",
         "explain.consensus_keywords": "Majority-support keywords across all models",
         "explain.matched_keywords": "Keywords this model shares with the majority",
@@ -380,7 +435,7 @@ _STRINGS = {
         "leaderboard.rounds": "Rounds played",
         "leaderboard.clear": "🗑️ Clear session leaderboard",
         "leaderboard.history_expander": "Round-by-round history",
-        "session.caption": "Save each case after reviewing it — build the finale for your screen recording.",
+        "session.caption": "Save each reviewed case to include it in the final averaged ranking.",
         "session.save_round": "Save this case ranking",
         "session.save_hint": "**{case}** saved · **{n}** case(s) in session — open **Session report** tab for the finale.",
         "session.save_hint_empty": "Save **{case}** when ready, then move to the next clinical case.",
@@ -393,23 +448,24 @@ _STRINGS = {
         "session.col_saved_at": "Saved at",
         "session.mode_consensus": "Consensus",
         "session.mode_gold": "Confirmed diagnosis",
-        "session.finale_title": "Story finale — closing rankings",
-        "session.finale_caption": "Two closing views for your demo: average across standard cases, and the real-diagnosis case.",
+        "session.finale_title": "Final averaged ranking",
+        "session.finale_caption": "Average across standard cases (1–4) and clinical match on case 5 with confirmed diagnosis.",
         "session.finale_avg": "Average ranking (cases 1–4)",
-        "session.finale_avg_help": "Arithmetic mean of consensus scores across **{n}** saved standard case(s).",
-        "session.finale_avg_rescaled": "Leader in the average view is rescaled to **100%** for demo clarity.",
+        "session.finale_avg_help": "Arithmetic mean of consensus scores across **{n}** saved standard case(s). #1 is shown as **100%**.",
         "session.finale_avg_empty": "Save at least one standard case (without confirmed diagnosis) to build the average ranking.",
         "session.finale_gold": "Real diagnosis ranking (case 5)",
         "session.finale_gold_help": "Absolute match vs confirmed diagnosis — **{case}**.",
-        "session.finale_gold_avg_help": "Clinical scores are the **arithmetic mean** across **{n}** saved runs of case 5.",
+        "session.finale_gold_avg_help": "Clinical scores are the **rolling average** of the last **{n}** saved runs of case 5 (max {max}).",
         "session.finale_gold_empty": "Save a case with **confirmed diagnosis** enabled to show the clinical finale.",
         "session.slots_empty": "No saved cases yet — run a benchmark and use **Save current benchmark** in the sidebar.",
         "session.save_not_auto": "Saving is **manual** — use the **Save** button in the results area above the ranking chart.",
         "session.save_ready": "Results ready for **{case}** — click **Save current benchmark** below.",
         "session.save_ready_short": "Not saved yet — click **Save** to store this ranking in the sidebar slot for **{case}**.",
         "session.save_case5_hint": "Select **case 5** in the case picker (top bar), then compile the template — saving requires an active case slot.",
-        "session.save_case5_ready": "Ready to save **run {n}/{max}** — re-run benchmark between saves to capture variance.",
-        "session.save_case5_ready_short": "Save **run {n}/{max}** — repeat benchmark 3–4 times, then recall slot 5 to see the average.",
+        "session.save_case5_ready": "Ready to save **run {n}/{max}** — re-run benchmark between saves.",
+        "session.save_case5_ready_rolling": "Ready to save another run — replaces the oldest; finale keeps the last **{max}**.",
+        "session.save_case5_ready_short": "Save **run {n}/{max}**, then recall slot 5 to see the rolling average.",
+        "session.save_case5_ready_short_rolling": "After **{max}** runs, each new save replaces the oldest. Recall slot 5 for the updated average.",
         "charts.tab_privacy": "Privacy gauges",
         "charts.tab_heatmap": "Concordance heatmap",
         "charts.tab_keywords": "Consensus keywords",
@@ -440,7 +496,7 @@ _STRINGS = {
         "sidebar.reset_help": "Azzera tutto incluso wallet a 0 USDT",
         "sidebar.cloud_tiers": "Versioni modelli cloud",
         "sidebar.cloud_tiers_help": "Visibili su schede e grafici. Su Claude vedi modello + thinking nella barra in alto; su ChatGPT free spesso il modello non è indicato — annota cosa vedi prima di incollare.",
-        "sidebar.cloud_tiers_howto": "**Come verificare:** Claude → nome modello + thinking (es. Sonnet · Medium) nella barra sopra la chat. ChatGPT → tier free spesso senza nome modello; opzionale: chiedi «Quale modello sei?» una volta. Gemini → selettore modello in basso a sinistra se presente.",
+        "sidebar.cloud_tiers_howto": "**Come verificare:** Claude → nome modello + thinking (es. Sonnet · Extra) nella barra sopra la chat. ChatGPT → tier free spesso senza nome modello; opzionale: chiedi «Quale modello sei?» una volta. Gemini → selettore modello in basso a sinistra se presente.",
         "sidebar.cloud_tiers_save": "Salva etichette versione",
         "sidebar.cloud_tiers_saved": "Etichette versione cloud salvate",
         "sidebar.cloud_tiers_qvac_auto": "Rilevato automaticamente dal setup locale (quant GGUF + tag Ollama).",
@@ -455,15 +511,17 @@ _STRINGS = {
         "sidebar.vlm_extract": "Estrai testo",
         "sidebar.vlm_add": "Aggiungi al caso",
         "sidebar.saved_cases": "Risultati salvati per caso",
-        "sidebar.saved_cases_help": "Carica o richiama i casi qui — unico navigatore. Verde = risultato salvato pronto da richiamare.",
+        "sidebar.saved_cases_help": "Carica o richiama i benchmark salvati. Verde = pronto da richiamare.",
         "sidebar.save_slot": "Salva benchmark corrente",
         "sidebar.save_slot_help": "Memorizza grafici + tabella del caso attivo (sovrascrive se salvi di nuovo).",
         "sidebar.save_slot_toast": "**{case}** salvato — clicca lo slot quando vuoi richiamarlo.",
         "sidebar.save_case5_run": "💾 Salva run {n}/{max}",
-        "sidebar.save_case5_help": "Il caso 5 memorizza fino a **{max}** run; il finale usa la media automatica degli score clinici.",
-        "sidebar.save_case5_run_toast": "Run **{n}/{max}** salvata — il finale usa la media di tutte le run.",
-        "sidebar.case5_runs": "{n}/{max} run salvate · media nel finale",
-        "sidebar.viewing_case5_avg": "media di {n} run",
+        "sidebar.save_case5_run_rolling": "💾 Salva nuova run (ultime {max})",
+        "sidebar.save_case5_help": "Il caso 5 conserva solo le **ultime {max}** run; le più vecchie vengono scartate. Gli score clinici usano la media rolling su quelle run.",
+        "sidebar.save_case5_run_toast": "Run **{n}/{max}** salvata — il finale usa la media rolling delle ultime {max} run.",
+        "sidebar.save_case5_run_toast_rolling": "Run salvata — la più vecchia è stata sostituita; media sulle ultime **{max}** run.",
+        "sidebar.case5_runs": "{n}/{max} run conservate · media rolling nel finale",
+        "sidebar.viewing_case5_avg": "media rolling ultime {n} run",
         "sidebar.slot_badge_empty": "Vuoto",
         "sidebar.slot_badge_filled": "Salvato",
         "sidebar.slot_badge_viewing": "In vista",
@@ -475,8 +533,8 @@ _STRINGS = {
         "sidebar.saved_count_inline": "{n}/{total}",
         "sidebar.finale_btn": "RANKING DEFINITIVO MEDIATO",
         "sidebar.finale_title": "Ranking definitivo mediato",
-        "sidebar.finale_hint": "Usa in colonna **RANKING DEFINITIVO MEDIATO** per il popup del finale.",
         "sidebar.clear_saved": "Reset risultati salvati",
+        "sidebar.clear_saved_help": "Cancella tutti gli snapshot salvati (casi 1–5). Non si può annullare.",
         "sidebar.clear_saved_title": "Cancellare tutti i risultati salvati?",
         "sidebar.clear_saved_body": "Rimuove ogni snapshot (casi 1–5). Il benchmark corrente e il wallet **non** vengono toccati.",
         "sidebar.clear_saved_confirm": "Sì, cancella salvati",
@@ -506,7 +564,7 @@ _STRINGS = {
         "gold.use": "Usa diagnosi clinica certa come riferimento",
         "gold.help": "Se attivo, il ranking misura lo scostamento da questa diagnosi. Se disattivo, si usa il consenso tra i modelli.",
         "gold.caption": "Puoi usare la tua patologia reale in forma **anonimizzata** (niente nome, date, ospedale, città). Esempio: «Diagnosi confermata: sclerosi multipla recidivante-remittente» oppure incolla un referto depersonalizzato.",
-        "gold.qvac_variance": "QVAC è un 4B on-device: salva **3–4 run** (rilancia il benchmark ogni volta) — il finale ne fa la media per uno score clinico stabile.",
+        "gold.qvac_variance": "QVAC è un 4B on-device: ogni **Run benchmark** chiama Ollama con **solo i default del Modelfile** (temperature 0.6, top_k 20, top_p 0.95, nessun seed). Salva fino a **{max} run** — il finale usa la media rolling per uno score clinico stabile.",
         "gold.input": "Diagnosi corretta / referto di riferimento",
         "gold.placeholder": "Es: Diagnosi confermata: sindrome coronarica acuta (NSTEMI). Esami: troponina positiva, ECG con sopraslivellamento ST...",
         "output.section": "Output diagnostici — incolla qui le risposte dai siti cloud",
@@ -545,16 +603,52 @@ _STRINGS = {
             "Il grafico clinico mostra il match **assoluto** con la diagnosi certa — "
             "100% solo se il modello coincide perfettamente col riferimento, non per riscalatura relativa."
         ),
+        "ranking.score_story_title": "Cosa misura lo 0–100% (demo)",
+        "ranking.score_story_gold_intro": (
+            "Hai attivato una **diagnosi di riferimento certa** — la dashboard mostra **due score indipendenti**. "
+            "Entrambi usano **embedding semantici locali** (significato clinico, non copia parola per parola)."
+        ),
+        "ranking.score_story_gold_clinical": (
+            "**Ref.% / grafico clinico (0–100 assoluto)** — quanto ogni risposta è vicina al **tuo riferimento reale**: "
+            "**40%** diagnosi & DDx · **30%** piano & next steps · **20%** urgenza/triage · **10%** sintesi clinica. "
+            "**100%** = stesso significato clinico del riferimento; **0%** = non correlato."
+        ),
+        "ranking.score_story_gold_consensus": (
+            "**Cons.% / grafico consenso (relativo)** — chi concorda di più con gli **altri LLM** su questo caso: "
+            "**40%** diagnosi · **30%** piano · **20%** urgenza · **10%** sintesi — poi **#1 riscalato a 100%**. "
+            "Misura accordo di gruppo, non correttezza vs verità clinica."
+        ),
+        "ranking.score_story_consensus_intro": (
+            "**Nessuna diagnosi certa in questo round** — gli score misurano l'**accordo tra modelli**, non la correttezza medica."
+        ),
+        "ranking.score_story_consensus_formula": (
+            "**Cons.% (0–100)** = **media pesata reale** di quattro dimensioni continue (0–100 ciascuna, da embedding locali): "
+            "**40%** diagnosi · **30%** piano & next steps · **20%** urgenza · **10%** sintesi clinica — "
+            "poi **#1 del gruppo = 100%** (riscalatura relativa solo su Cons.%). "
+            "Attiva la **diagnosi certa** sopra per il match **assoluto** vs il tuo caso reale. "
+            "Usa **🔍 Guarda esattamente come è stato calcolato ogni punteggio** per verificare i numeri."
+        ),
+        "chart.privacy_scale_low": "0",
+        "chart.privacy_scale_high": "100",
+        "chart.privacy_scale_cloud": "cloud",
+        "chart.privacy_scale_local": "on-device",
+        "chart.privacy_caption": "0% = risposta incollata da sito cloud (il caso ha lasciato il device) · 100% = QVAC MedPsy elaborato interamente in locale.",
         "ranking.legend": (
-            "**Score consenso %** = media pesata di match diagnosi (35%), piano & next steps (25%), "
-            "sintesi clinica (25%), accordo urgenza (15%) — **riscalato così #1 del gruppo = 100%**. "
+            "**Score consenso %** = media pesata di match diagnosi (40%), piano & next steps (30%), "
+            "accordo urgenza (20%), sintesi clinica (10%) — **riscalato così #1 del gruppo = 100%**. "
             "Con diagnosi certa, **Ref.%** e il grafico clinico sono **assoluti** "
             "(100% = match perfetto col riferimento — mai riscalati). "
             "**Cons.%** da solo è riscalato (#1 = 100%) perché non c'è ground truth. "
-            "**Privacy** è un plus a parte — solo gauge, mai in nessuno score."
+            "La riga **Privacy** (0–100) è solo informativa — non entra in nessuno score clinico o consenso."
         ),
         "narrative.section": "Perché questa classifica?",
-        "narrative.section_caption": "Generata automaticamente dalle stesse metriche qui sopra — nessuna modifica manuale, nessun punteggio nascosto. TPS/TTFT non sono misurabili sui siti cloud senza API, quindi qui il focus è su ciò che si può misurare onestamente: il contenuto diagnostico reale prodotto da ciascun modello.",
+        "narrative.section_caption": "Sintesi breve per modello.",
+        "narrative.compact_leader": "Leader del gruppo — **{score}%** consenso.",
+        "narrative.compact_leader_clinical": "Più vicino al riferimento — **{score}%**.",
+        "narrative.compact_laggard": "Più basso qui — **#{rank}** con **{score}%**.",
+        "narrative.compact_mid": "Rank **#{rank}** — **{score}%**.",
+        "narrative.compact_dual": "Consenso **#{rank_cons}** ({score_cons}%) · Clinico **#{rank_clin}** ({score_clin}%).",
+        "narrative.compact_urgency_diff": "Urgenza **{label}** (gruppo: **{majority}**).",
         "narrative.verdict_high": "Score consenso **{score}/100** — forte accordo col resto del gruppo, sia nelle parole che nel significato clinico{sem_clause}.",
         "narrative.verdict_mid": "Score consenso **{score}/100** — accordo discreto col gruppo, con qualche differenza di formulazione o enfasi{sem_clause}.",
         "narrative.verdict_low": "Score consenso **{score}/100** — questa risposta si allontana di più dal gruppo su questo caso{sem_clause}.",
@@ -579,7 +673,7 @@ _STRINGS = {
         "charts.tab_radar": "Radar multidimensionale",
         "charts.tab_bars": "Classifica a barre",
         "charts.tab_dims": "Dettaglio dimensioni",
-        "charts.dims_privacy_note": "Il grafico a barre per dimensione e i gauge privacy sono sempre visibili nella sezione KPI sopra — questa tab ha le viste di approfondimento.",
+        "charts.dims_privacy_note": "Il breakdown per dimensione è in questa tab — la privacy è già mostrata in modo compatto sopra i grafici di ranking.",
         "decision.section": "Decisione e conformità",
         "decision.lead": "Ora che hai visto i risultati fianco a fianco — quale percorso scegli davvero per questo caso?",
         "decision.cloud": "Cloud",
@@ -610,6 +704,7 @@ _STRINGS = {
         "matrix.pair": "Coppia",
         "matrix.concordance": "Concordanza %",
         "cols.model": "Modello",
+        "cols.version": "Versione",
         "cols.tier_requested": "Tier richiesto",
         "cols.tier": "Tier",
         "cols.local": "Local",
@@ -650,7 +745,7 @@ _STRINGS = {
         "chart.dims_title": "Dettaglio per dimensione KPI",
         "chart.score_pct": "Punteggio %",
         "chart.acc_cons_short": "Acc. consenso",
-        "chart.privacy_title": "Punteggio privacy on-device per modello",
+        "chart.privacy_title": "Privacy on-device",
         "chart.heatmap_title": "Heatmap concordanza diagnostica a coppie",
         "chart.keywords_title": "Keyword cliniche di consenso condivise",
         "chart.keywords_axis": "Modelli che citano il termine",
@@ -691,7 +786,7 @@ _STRINGS = {
         "case.focus.case4": "Distinguere uno switch maniacale da una mania indotta da sostanze e cogliere il conflitto litio/rene.",
         "case.focus.case5": "Incolla un tuo caso anonimizzato per testare uno scenario reale.",
         "case.custom_hint": "Caso personalizzato — seleziona uno slot nella **colonna sinistra** per caricare un preset.",
-        "case.sidebar_nav_hint": "← Seleziona, carica o richiama i casi dagli **slot in colonna sinistra**.",
+        "case.sidebar_nav_hint": "Seleziona, carica o richiama i casi dalla colonna sinistra.",
         "case.short.case1": "Dolore toracico",
         "case.short.case2": "SM · RMN",
         "case.short.case3": "Appendicite",
@@ -749,27 +844,43 @@ _STRINGS = {
         "kpi.consensus_avg_help": "Media pesata tra Affidabilità (sovrapposizione con l'intera lista differenziale di ogni altro modello), Accuratezza (sovrapposizione della sola diagnosi principale con ogni altro modello) e Similarità semantica (coincidenza di significato via embedding locale, cosi' le parafrasi non vengono penalizzate). È un punteggio di **accordo**, non di correttezza — vedi sotto.",
         "kpi.semantic_unavailable": "ℹ️ La similarità semantica (il KPI di significato) richiede il modello di embedding locale — avvialo con lo script di setup per abilitare questo terzo segnale; nel frattempo i punteggi sopra usano solo Affidabilità + Accuratezza.",
         "kpi.glance_title": "📊 Dettaglio KPI completo — sempre visibile, senza click",
-        "kpi.glance_caption": "I numeri esatti dietro alla classifica sopra: quanto ogni modello è d'accordo col gruppo (tabella + grafico a barre) e quanto del caso è rimasto on-device (gauge privacy). Clicca una delle card KPI sopra per un richiamo veloce di cosa misura.",
+        "kpi.glance_caption": "Tabelle consenso per questo caso. La privacy è la riga compatta sotto i grafici di ranking.",
         "kpi.mode_note_consensus": "**Nessuna diagnosi confermata è stata inserita per questo round** → i punteggi sotto sono un **punteggio di accordo (0-100%)**: quanto le risposte dei modelli si sovrappongono tra loro nelle parole e nel significato. Senza una verità di riferimento, questo misura il *consenso*, non la *correttezza* — 100% significherebbe risposte identiche parola per parola e significato per significato, cosa rara anche quando tutti hanno clinicamente ragione. Incolla una diagnosi confermata nella sezione sopra per sbloccare il **voto clinico** da 1 a 10.",
         "kpi.mode_note_gold": "**Diagnosi di riferimento confermata attiva** → la classifica clinica è **assoluta** (non riscalata al 100%). Score = match semantico su diagnosi, piano, urgenza e sintesi vs riferimento — parafrasi in altra lingua valgono; **non** serve copiare parola per parola.",
         "kpi.explain_button": "🔍 Guarda esattamente come è stato calcolato ogni punteggio",
         "explain.dialog_title": "🔍 Come è stato calcolato ogni punteggio",
-        "explain.dialog_intro": "Nessun numero nascosto: ogni componente sotto è un calcolo reale e riproducibile a partire dal testo incollato — niente è stimato o inventato.",
+        "explain.dialog_intro": (
+            "Nessun numero nascosto: ogni dimensione è un 0–100% continuo da embedding semantici locali "
+            "(similarità coseno su testo clinico estratto). Lo score mostrato è la **media pesata letterale** "
+            "sotto — Cons.% viene poi riscalato con #1 = 100%."
+        ),
+        "explain.consensus_label": "Punteggio consenso (Cons.%)",
+        "explain.consensus_desc": (
+            "Quattro fette cliniche confrontate a coppie con ogni altro modello: blocco diagnosi, piano/next steps, "
+            "sintesi clinica e urgenza (65% testo semantico + 35% etichetta triage). "
+            "Ogni valore è 0–100 continuo — non gradini fissi tipo 100/75/50/0."
+        ),
+        "explain.consensus_rescale_note": (
+            "Cons_raw è la media pesata sopra. Cons.% in tabella è riscalato vs il leader del round "
+            "(#1 → 100%) — Ref.% in modalità gold **non** è riscalato."
+        ),
+        "explain.dimension_pairs": "{dim} — similarità a coppie vs altri modelli",
         "explain.reliability_label": "① Affidabilità — accordo a coppie",
         "explain.reliability_desc": "Media della sovrapposizione tra la diagnosi differenziale di questo modello e quella di ogni altro modello, mescolando la sovrapposizione a livello di lista (65%) con quella per keyword su tutto il testo (35%).",
         "explain.accuracy_label": "② Accuratezza (consenso) — coincidenza keyword",
         "explain.accuracy_desc": "Sovrapposizione media di keyword tra la diagnosi principale (la prima) di questo modello e la diagnosi principale di ogni altro modello — stessa logica dell'Affidabilità, ma limitata alla sola prima ipotesi invece che a tutta la lista differenziale.",
         "explain.semantic_label": "③ Similarità semantica — coincidenza di significato",
         "explain.semantic_desc": "Similarità coseno tra la diagnosi principale di questo modello e quella di ogni altro modello, calcolata da un modello di embedding locale (all-minilm) — è ciò che cattura \"stessa diagnosi, parole diverse\".",
-        "explain.semantic_unavailable_note": "Non disponibile in questo round (modello di embedding locale non raggiungibile) — il punteggio finale ha usato una media 50/50 di Affidabilità + Accuratezza invece della media 30/30/40.",
+        "explain.semantic_unavailable_note": (
+            "Modello di embedding locale non raggiungibile in questo round — il consenso usa un fallback keyword affidabilità/accuratezza."
+        ),
         "explain.gold_label": "④ Vs. diagnosi di riferimento confermata",
-        "explain.gold_desc": "Misurato vs la diagnosi certa incollata usando il **significato**, non le parole uguali: diagnosi (42%), piano & prossimi step (33%), urgenza (15%), sintesi clinica (10%). Stessa diagnosi con parole diverse ottiene punteggio alto.",
+        "explain.gold_desc": "Misurato vs la diagnosi certa incollata usando il **significato**, non le parole uguali: diagnosi (40%), piano & prossimi step (30%), urgenza (20%), sintesi clinica (10%). Stessa diagnosi con parole diverse ottiene punteggio alto.",
         "explain.grade_label": "Voto clinico",
         "explain.grade_rubric": "Punteggio clinico 0-100% riscalato in un voto familiare da 1 a 10: **1** = non correlato al riferimento · **5** ≈ parzialmente corretto (stessa categoria, diagnosi specifica diversa) · **10** = coincide col riferimento quasi esattamente nelle parole e nel significato, con diagnosi differenziale completa.",
         "explain.formula_label": "Formula",
-        "explain.formula_consensus_3": "{score} = 25%×{rel} (affidabilità) + 25%×{acc} (accuratezza) + 50%×{sem} (semantica)",
-        "explain.formula_consensus_2": "{score} = 50%×{rel} (affidabilità) + 50%×{acc} (accuratezza) — semantica non disponibile in questo round",
-        "explain.formula_final_gold": "Clinico {gold}% = match semantico pesato (diagnosi + piano + urgenza + sintesi) — nessun premio per copiare le stesse parole",
+        "explain.formula_consensus_dim": "Cons_raw = {formula}\n= {raw}%\nCons_display = {rescaled}% (riscalato vs #1 del round)",
+        "explain.formula_gold_dim": "Ref = {formula}\n= {score}% (assoluto — non riscalato)",
         "explain.own_keywords": "Keyword della diagnosi principale di questo modello",
         "explain.consensus_keywords": "Keyword con supporto della maggioranza tra tutti i modelli",
         "explain.matched_keywords": "Keyword che questo modello condivide con la maggioranza",
@@ -803,7 +914,7 @@ _STRINGS = {
         "leaderboard.rounds": "Round giocati",
         "leaderboard.clear": "🗑️ Azzera classifica di sessione",
         "leaderboard.history_expander": "Storico round per round",
-        "session.caption": "Salva ogni caso dopo averlo valutato — costruisci il finale per la registrazione.",
+        "session.caption": "Salva ogni caso valutato per includerlo nel ranking definitivo mediato.",
         "session.save_round": "Salva ranking di questo caso",
         "session.save_hint": "**{case}** salvato · **{n}** caso/i in sessione — apri tab **Report di sessione** per il finale.",
         "session.save_hint_empty": "Salva **{case}** quando pronto, poi passa al caso clinico successivo.",
@@ -816,15 +927,14 @@ _STRINGS = {
         "session.col_saved_at": "Salvato",
         "session.mode_consensus": "Consenso",
         "session.mode_gold": "Diagnosi certa",
-        "session.finale_title": "Story finale — classifiche di chiusura",
-        "session.finale_caption": "Due viste di chiusura per la demo: media sui casi standard, e caso con diagnosi reale.",
+        "session.finale_title": "Ranking definitivo mediato",
+        "session.finale_caption": "Media sui casi standard (1–4) e match clinico sul caso 5 con diagnosi certa.",
         "session.finale_avg": "Classifica media (casi 1–4)",
-        "session.finale_avg_help": "Media aritmetica degli score consenso su **{n}** caso/i standard salvato/i.",
-        "session.finale_avg_rescaled": "Il leader nella media è riscalato al **100%** per chiarezza in demo.",
+        "session.finale_avg_help": "Media aritmetica degli score consenso su **{n}** caso/i standard salvato/i. Il #1 è mostrato come **100%**.",
         "session.finale_avg_empty": "Salva almeno un caso standard (senza diagnosi certa) per la classifica media.",
         "session.finale_gold": "Classifica diagnosi reale (caso 5)",
         "session.finale_gold_help": "Match assoluto vs diagnosi certa — **{case}**.",
-        "session.finale_gold_avg_help": "Gli score clinici sono la **media aritmetica** su **{n}** run salvate del caso 5.",
+        "session.finale_gold_avg_help": "Gli score clinici sono la **media rolling** delle ultime **{n}** run salvate del caso 5 (max {max}).",
         "session.finale_gold_empty": "Salva un caso con **diagnosi certa** attiva per il finale clinico.",
         "session.slots_empty": "Nessun caso salvato — esegui un benchmark e usa **Salva benchmark corrente** in colonna.",
         "session.save_not_auto": "Il salvataggio **non è automatico** — usa il pulsante **Salva** nell'area risultati sopra la classifica.",
@@ -832,7 +942,9 @@ _STRINGS = {
         "session.save_ready_short": "Non ancora salvato — clicca **Salva** per memorizzare la classifica nello slot colonna di **{case}**.",
         "session.save_case5_hint": "Seleziona il **caso 5** nel selettore in alto, poi compila il template — serve uno slot caso attivo per salvare.",
         "session.save_case5_ready": "Pronta per **run {n}/{max}** — rilancia il benchmark tra un salvataggio e l'altro.",
-        "session.save_case5_ready_short": "Salva **run {n}/{max}** — ripeti il benchmark 3–4 volte, poi richiama lo slot 5 per la media.",
+        "session.save_case5_ready_rolling": "Pronta per una nuova run — sostituisce la più vecchia; il finale tiene le ultime **{max}**.",
+        "session.save_case5_ready_short": "Salva **run {n}/{max}**, poi richiama lo slot 5 per la media rolling.",
+        "session.save_case5_ready_short_rolling": "Dopo **{max}** run, ogni nuovo salvataggio sostituisce la più vecchia. Richiama lo slot 5 per la media aggiornata.",
         "charts.tab_privacy": "Gauge privacy",
         "charts.tab_heatmap": "Heatmap concordanza",
         "charts.tab_keywords": "Keyword di consenso",
