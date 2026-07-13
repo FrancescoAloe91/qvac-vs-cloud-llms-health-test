@@ -138,7 +138,7 @@ TABLE_MODEL_SHORT = {
 
 
 def build_consensus_table(
-    compare: dict, model_keys: list, lang: str = "en", tier_labels: dict | None = None
+    compare: dict, model_keys: list, lang: str = "en", tier_labels: Optional[dict] = None
 ) -> pd.DataFrame:
     """Full results table with dual ranking columns when gold standard is active."""
     L = _L(lang)

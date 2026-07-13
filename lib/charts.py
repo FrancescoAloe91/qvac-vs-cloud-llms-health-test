@@ -1,5 +1,7 @@
 """Plotly charts for the benchmark dashboard."""
 
+from typing import Optional
+
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -29,7 +31,7 @@ PLOT_BG = "#161b26"
 GRID = "#2a3142"
 
 
-def _chart_model_label(key: str, full_name: str, tier_labels: dict | None = None) -> str:
+def _chart_model_label(key: str, full_name: str, tier_labels: Optional[dict] = None) -> str:
     if tier_labels is not None:
         return short_chart_label(key, tier_labels)
     return TABLE_MODEL_SHORT.get(key, full_name)
@@ -121,7 +123,7 @@ def fig_ranking_bars(ranking_df, use_gold: bool, lang: str = "en", height: int =
 
 
 def fig_consensus_ranking_bars(
-    ranking_df, lang: str = "en", height: int = 260, tier_labels: dict | None = None
+    ranking_df, lang: str = "en", height: int = 260, tier_labels: Optional[dict] = None
 ) -> go.Figure:
     """Consensus ranking: best model in the group = 100%, others scale down."""
     L = _L(lang)
@@ -152,7 +154,7 @@ def fig_consensus_ranking_bars(
 
 
 def fig_clinical_ranking_bars(
-    ranking_df, lang: str = "en", height: int = 260, tier_labels: dict | None = None
+    ranking_df, lang: str = "en", height: int = 260, tier_labels: Optional[dict] = None
 ) -> go.Figure:
     """Clinical ranking vs. confirmed diagnosis — absolute % (100% = perfect match with reference)."""
     L = _L(lang)
@@ -212,7 +214,7 @@ def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_ava
 
 
 def fig_privacy_gauges(
-    ranking_df, lang: str = "en", height: int = 300, tier_labels: dict | None = None
+    ranking_df, lang: str = "en", height: int = 300, tier_labels: Optional[dict] = None
 ) -> go.Figure:
     """Gauge per modello: 0% cloud → 100% on-device. 2×2 grid + label sotto per evitare tagli."""
     L = _L(lang)

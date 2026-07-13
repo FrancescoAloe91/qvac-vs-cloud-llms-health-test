@@ -577,6 +577,7 @@ with st.sidebar:
             st.session_state.cloud_tier_labels = labels
             save_tier_labels(labels)
             st.toast(t("sidebar.cloud_tiers_saved", lang), icon="✅")
+        st.caption(t("sidebar.cloud_tiers_howto", lang))
 
     with st.expander("👁️ " + t("sidebar.vlm", lang), expanded=False):
         uploaded = st.file_uploader(t("sidebar.vlm_upload", lang), type=["jpg", "jpeg", "png", "pdf"])

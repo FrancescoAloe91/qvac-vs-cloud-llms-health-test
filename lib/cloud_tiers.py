@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from lib.tiers import CLOUD_KEYS, MODEL_CONFIG
 
 _TIERS_PATH = Path(__file__).resolve().parent.parent / "data" / "cloud_tiers.json"
 
 DEFAULT_TIER_LABELS: Dict[str, str] = {
-    "chatgpt": "Default free tier (chatgpt.com — new chat)",
-    "claude": "Default free tier (claude.ai — new chat)",
+    "chatgpt": "Free tier default (chatgpt.com — model not shown in UI)",
+    "claude": "Claude Sonnet · thinking Medium (claude.ai default)",
     "gemini": "Default free tier (gemini.google.com — new chat)",
     "qvac": "MedPsy 4B · CPU on-device",
 }
@@ -43,12 +43,12 @@ def save_tier_labels(labels: Dict[str, str]) -> None:
     _TIERS_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def tier_label(model_key: str, labels: Dict[str, str] | None = None) -> str:
+def tier_label(model_key: str, labels: Optional[Dict[str, str]] = None) -> str:
     data = labels or load_tier_labels()
     return (data.get(model_key) or DEFAULT_TIER_LABELS.get(model_key, "")).strip()
 
 
-def display_model_name(model_key: str, labels: Dict[str, str] | None = None) -> str:
+def display_model_name(model_key: str, labels: Optional[Dict[str, str]] = None) -> str:
     base = MODEL_CONFIG.get(model_key, {}).get("name", model_key)
     if model_key not in CLOUD_KEYS:
         return base
@@ -56,7 +56,7 @@ def display_model_name(model_key: str, labels: Dict[str, str] | None = None) -> 
     return f"{base} · {tier}" if tier else base
 
 
-def short_chart_label(model_key: str, labels: Dict[str, str] | None = None) -> str:
+def short_chart_label(model_key: str, labels: Optional[Dict[str, str]] = None) -> str:
     """Compact label for tight chart cells (gauges, bars)."""
     from lib.metrics import TABLE_MODEL_SHORT
 
