@@ -572,7 +572,7 @@ def build_averaged_ranking_from_snapshots(runs: list, lang: str = "en") -> pd.Da
     df = df.sort_values(L["score_cons_rescaled"], ascending=False).reset_index(drop=True)
     df[L["rank_consensus"]] = range(1, len(df) + 1)
     if L["score_clin_short"] in df.columns:
-        clin = df[df[L["score_clin_short"].notna()]].sort_values(
+        clin = df[df[L["score_clin_short"]].notna()].sort_values(
             L["score_clin_short"], ascending=False
         )
         rank_map = {row["key"]: i + 1 for i, (_, row) in enumerate(clin.iterrows())}
