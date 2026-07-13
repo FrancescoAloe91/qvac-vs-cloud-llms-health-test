@@ -4,7 +4,7 @@ Dashboard di benchmark clinico: confronta **ChatGPT**, **Claude** e **Gemini** (
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py)
 
-**Demo pubblica (gratuita):** dopo il deploy su Streamlit Community Cloud → vedi sezione [Dashboard pubblica](#dashboard-pubblica-gratuita) sotto.
+**Demo pubblica (gratuita):** vedi [DEPLOY.md](DEPLOY.md) — deploy in 2 minuti su Streamlit Cloud (0 €).
 
 | | Locale (completo) | Cloud pubblica (gratis) |
 |---|---|---|
@@ -98,7 +98,7 @@ Hosting **100% free** su [Streamlit Community Cloud](https://streamlit.io/cloud)
 - Puoi **incollare manualmente** anche la risposta QVAC (generata sul tuo Mac con `./run.sh`)  
 - **Run benchmark** live richiede Ollama → solo in **locale**
 
-Aggiorna il link pubblico nel README dopo il primo deploy (Settings → General → App URL).
+Aggiorna il link pubblico nel README dopo il primo deploy. Guida passo-passo: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
