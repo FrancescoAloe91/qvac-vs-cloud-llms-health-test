@@ -1,6 +1,6 @@
 {
   "chatgpt": "Tier gratuito predefinito (chatgpt.com — modello non indicato in UI)",
-  "claude": "Claude Sonnet · thinking Medium (default claude.ai)",
-  "gemini": "Tier gratuito predefinito (gemini.google.com — nuova chat)",
+  "claude": "Sonnet 5 · Medium",
+  "gemini": "3.5 Flash · extended thinking",
   "qvac": "MedPsy 4B · CPU on-device"
 }

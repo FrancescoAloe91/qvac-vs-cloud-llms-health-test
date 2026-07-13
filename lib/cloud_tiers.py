@@ -12,8 +12,8 @@ _TIERS_PATH = Path(__file__).resolve().parent.parent / "data" / "cloud_tiers.jso
 
 DEFAULT_TIER_LABELS: Dict[str, str] = {
     "chatgpt": "Free tier default (chatgpt.com — model not shown in UI)",
-    "claude": "Claude Sonnet · thinking Medium (claude.ai default)",
-    "gemini": "Default free tier (gemini.google.com — new chat)",
+    "claude": "Sonnet 5 · Medium",
+    "gemini": "3.5 Flash · extended thinking",
     "qvac": "MedPsy 4B · CPU on-device",
 }
 
