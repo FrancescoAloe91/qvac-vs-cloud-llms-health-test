@@ -1,33 +1,34 @@
 # QVAC vs Cloud LLMs — Health Test
 
-Dashboard di benchmark clinico: confronta **ChatGPT**, **Claude** e **Gemini** (risposte incollate dai siti ufficiali) con **Tether QVAC MedPsy 4B** in inferenza locale reale via Ollama.
+Clinical benchmark dashboard: compare **ChatGPT**, **Claude**, and **Gemini** (answers pasted from their official free sites) with **Tether QVAC MedPsy 4B** running real on-device inference via Ollama.
 
-**Demo live (gratis):** [francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app)
+**Live demo (free):** [francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app)
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=FrancescoAloe91/qvac-vs-cloud-llms-health-test&branch=main&mainModule=app.py)
 
-| | Locale (completo) | [Demo cloud](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app) (gratis) |
+| | Local (full) | [Cloud demo](https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app) (free) |
 |---|---|---|
-| UI + ranking + slot salvati | ✅ | ✅ |
-| Incolla risposte cloud | ✅ | ✅ |
-| **Run benchmark** QVAC live | ✅ Ollama | ❌ *(incolla output QVAC a mano)* |
-| Embedding semantico | ✅ Ollama | ⚠️ solo keyword se Ollama assente |
-| Costo | **0 €** | **0 €** |
+| UI + ranking + saved slots | ✅ | ✅ |
+| Paste cloud answers | ✅ | ✅ |
+| **Run benchmark** QVAC live | ✅ Ollama | ❌ *(paste QVAC output manually)* |
+| Semantic embeddings | ✅ Ollama | ⚠️ keyword-only if Ollama is unavailable |
+| Cost | **$0** | **$0** |
 
 ---
 
-## Onestà del benchmark
+## Benchmark honesty
 
-- **Stesso prompt clinico** copiato su tutti i siti cloud e usato per QVAC.
-- **Nessuna risposta inventata**: se Ollama non risponde, QVAC mostra errore — non simula mai un risultato.
-- **Cloud = tier gratuito** del tuo account (chatgpt.com, claude.ai, gemini.google.com). Non è un confronto con GPT‑4o / Claude Opus a pagamento unless you paste answers from those tiers.
-- **QVAC** = modello medico specializzato 4B on-device — vantaggio legittimo su casi clinici, non prova di supremazia su tutti i LLM commerciali.
+- **Same clinical prompt** is copied to every cloud site and used for QVAC.
+- **No fabricated answers**: if Ollama is unreachable, QVAC shows an error — it never invents a diagnosis.
+- **Cloud = free tier** of your account (chatgpt.com, claude.ai, gemini.google.com). This is not a paid GPT‑4o / Claude Opus comparison unless you paste answers from those tiers.
+- **QVAC** = medicine-specialized 4B on-device model — a fair edge on clinical cases, not a claim of supremacy over all commercial LLMs.
+- **Stock QVAC sampling**: the dashboard does **not** override temperature / seed / top‑k. Ollama uses the Modelfile defaults from setup (`temperature 0.6`, `top_k 20`, `top_p 0.95`).
 
 ---
 
-## Avvio locale (macchina tua, tutto gratis)
+## Local setup (your machine, free)
 
-### Nuova Mac — installazione one-shot
+### New Mac — one-shot install
 
 ```bash
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
@@ -36,7 +37,7 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### Nuovo PC Windows — installazione one-shot
+### New Windows PC — one-shot install
 
 ```powershell
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
@@ -44,35 +45,35 @@ cd qvac-vs-cloud-llms-health-test
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Poi avvia con **`launch_dashboard.bat`** (oppure `run.bat` per debug in finestra).
+Then start with **`launch_dashboard.bat`** (or `run.bat` for a debug window).
 
-Requisiti Windows: **Python 3.10+**, **Ollama** (installato automaticamente via winget se disponibile).
+Windows requirements: **Python 3.10+**, **Ollama** (installed automatically via winget when available).
 
-Lo script fa tutto in automatico (una tantum):
+The install script does everything once:
 
-1. **Python** — crea `.venv` e installa Streamlit + dipendenze  
-2. **Ollama + MedPsy** — scarica il motore locale e il modello [MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B-GGUF) (~2.7 GB) + embedding `all-minilm-cpu`  
-3. **Launcher** — ricostruisce `QVAC Dashboard.app` con path relativi (funziona in qualsiasi cartella)
+1. **Python** — creates `.venv` and installs Streamlit + dependencies  
+2. **Ollama + MedPsy** — downloads the local engine and [MedPsy-4B](https://huggingface.co/qvac/MedPsy-4B-GGUF) (~2.7 GB) + embedding model `all-minilm-cpu`  
+3. **Launcher** — rebuilds `QVAC Dashboard.app` with relative paths (works from any folder)
 
-> Non serve un “QVAC SDK” separato: il progetto usa **Ollama** + **MedPsy GGUF** da Hugging Face, gestiti da `scripts/setup_medpsy.sh` (chiamato da `install.sh`).
+> No separate “QVAC SDK” is required: this project uses **Ollama** + the **MedPsy GGUF** from Hugging Face, managed by `scripts/setup_medpsy.sh` / `scripts/setup_medpsy.ps1`.
 
-### Avvio con un click (dopo l’install)
+### One-click start (after install)
 
 **macOS**
 
-- **Doppio click** su `QVAC Dashboard.app` → apre Safari su `http://localhost:8501`  
-- oppure: `./launch_dashboard.sh`  
-- oppure: `./run.sh` (foreground, debug)
+- **Double-click** `QVAC Dashboard.app` → opens Safari at `http://localhost:8501`  
+- or: `./launch_dashboard.sh`  
+- or: `./run.sh` (foreground, debug)
 
 **Windows**
 
-- Doppio click su `launch_dashboard.bat`  
-- oppure: `run.bat` (foreground, debug)
+- Double-click `launch_dashboard.bat`  
+- or: `run.bat` (foreground, debug)
 
-### Setup manuale (alternativa)
+### Manual setup (alternative)
 
 ```bash
-./scripts/setup_medpsy.sh   # solo motore Ollama + MedPsy
+./scripts/setup_medpsy.sh   # Ollama + MedPsy only
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
@@ -80,101 +81,109 @@ pip install -r requirements.txt
 
 ---
 
-## Flusso benchmark
+## Benchmark flow
 
-1. **Sidebar sinistra** → carica caso 1–5 (slot) o richiama risultato salvato  
-2. Opzionale: **Gold standard** (caso 5) — diagnosi certa per punteggio clinico semantico  
-3. **Copia prompt** → incolla su ChatGPT, Claude, Gemini (tier free del tuo account)  
-4. **Run benchmark** → QVAC MedPsy genera in locale (risposta simile ma non identica a ogni run)  
-5. **Incolla** le 3 risposte cloud nei riquadri  
-6. **Salva** nell’area risultati (main) → slot verde in sidebar  
+1. **Left sidebar** → load case 1–5 (slot) or recall a saved result  
+2. Optional: **Gold standard** (case 5) — confirmed diagnosis for absolute clinical scoring  
+3. **Copy prompt** → paste into ChatGPT, Claude, Gemini (free tier of your account)  
+4. **Run benchmark** → QVAC MedPsy generates locally (similar but not identical each run)  
+5. **Paste** the three cloud answers into their cards  
+6. **Save** in the results area → green slot in the sidebar  
 
-### Caso 5 — fino a 4 run + media
+### Case 5 — up to 10 runs + rolling average
 
-1. Compila il template del caso reale anonimizzato  
-2. Incolla cloud **una volta** (puoi tenere le stesse risposte)  
-3. **Run benchmark** → **Salva run 1/4**  
-4. Ripeti run + salva fino a **10/10** (finestra rolling: ultime 10 run; ogni run QVAC può variare leggermente)  
-5. Sidebar → **Ranking definitivo mediato** (media casi 1–4 + gold caso 5)
+1. Fill the anonymized real-patient template  
+2. Paste cloud answers **once** (you can keep the same cloud texts)  
+3. **Run benchmark** → **Save run**  
+4. Repeat run + save up to **10/10** (rolling window: last 10 runs; QVAC wording can shift slightly)  
+5. Sidebar → **Final averaged ranking** (average of cases 1–4 + gold case 5)
 
 ### Reset
 
-- **Reset** (sidebar): azzera lavoro corrente, **mantiene** slot salvati  
-- **Reset risultati salvati**: cancella solo gli snapshot  
+- **Reset** (sidebar): clears current work, **keeps** saved slots  
+- **Reset saved results**: deletes snapshots only  
 
 ---
 
-## KPI e punteggi
+## KPIs and scoring
 
-**Casi 1–4 (senza diagnosi certa):** punteggio di **consenso** — accordo tra modelli (affidabilità + accuratezza keyword + similarità semantica locale).
+**One weighting rule** for both consensus and clinical (gold) scores:
 
-**Caso 5 (con gold standard):** punteggio **clinico semantico** vs diagnosi di riferimento (diagnosi, piano, urgenza).
+**40% diagnosis · 30% plan & next steps · 20% urgency · 10% clinical summary**
 
-Pulsante **“Vedi come sono calcolati i punteggi”** sotto la classifica per il dettaglio.
+Each dimension is a continuous **0–100** score from local semantic embeddings (meaning, not copy-paste wording).
 
----
+- **Cases 1–4 (no confirmed diagnosis):** **Cons.%** — inter-model agreement, then **rescaled so #1 = 100%**.  
+- **Case 5 (with gold standard):** **Ref.%** — absolute match vs your confirmed reference (**not** rescaled).  
 
-## Dashboard pubblica (gratuita)
+Use **“See exactly how every score was calculated”** under the ranking for the full numeric breakdown.
 
-**URL live:** https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app
-
-Hosting **100% free** su [Streamlit Community Cloud](https://streamlit.io/cloud) (nessuna carta di credito).
-
-### Cosa funziona sulla demo cloud
-
-- Presentazione UI, casi clinici, incolla cloud, ranking e slot  
-- Puoi **incollare manualmente** anche la risposta QVAC (generata sul tuo Mac con `./launch_dashboard.sh`)  
-- **Run benchmark** live richiede Ollama → solo in **locale**
-
-Per rifare il deploy o usare Render: **[DEPLOY.md](DEPLOY.md)**.
+Privacy (0 = cloud paste / 100 = on-device) is informational only and is **not** part of Cons.% or Ref.%.
 
 ---
 
-## Struttura progetto
+## Public dashboard (free)
+
+**Live URL:** https://francescoaloe91-qvac-vs-cloud-llms-health-test-app-wihxyd.streamlit.app
+
+Hosted **100% free** on [Streamlit Community Cloud](https://streamlit.io/cloud) (no credit card).
+
+### What works on the cloud demo
+
+- UI, clinical cases, paste cloud answers, ranking and slots  
+- You can also **manually paste** a QVAC answer (generated on your machine with the local launcher)  
+- Live **Run benchmark** needs Ollama → **local only**
+
+To redeploy or use Render, see **[DEPLOY.md](DEPLOY.md)**.
+
+---
+
+## Project layout
 
 ```
-app.py                 # Dashboard Streamlit
+app.py                 # Streamlit dashboard
 lib/                   # cases, medpsy, metrics, diagnosis_compare, session_store, …
-install.sh             # Setup one-shot nuova Mac (venv + MedPsy + launcher)
-PRESENTATION.md        # Pitch one-pager (demo / slide)
-scripts/setup_medpsy.sh
-scripts/build_dashboard_app.sh
-launch_dashboard.sh
-QVAC Dashboard.app
+install.sh / install.ps1
+PRESENTATION.md        # Pitch one-pager
+DEPLOY.md              # Free hosting notes
+scripts/setup_medpsy.sh / setup_medpsy.ps1
+scripts/verify_score_formulas.py
+launch_dashboard.sh / launch_dashboard.bat
+QVAC Dashboard.app     # macOS launcher
 ```
 
 ---
 
-## Continuare da un altro PC / nuova Mac o Windows
+## Continue on another Mac or Windows PC
 
-| Sistema | Comando install | Avvio |
+| OS | Install | Start |
 |---|---|---|
-| **macOS** | `./install.sh` | `QVAC Dashboard.app` o `./launch_dashboard.sh` |
+| **macOS** | `./install.sh` | `QVAC Dashboard.app` or `./launch_dashboard.sh` |
 | **Windows** | `install.ps1` | `launch_dashboard.bat` |
 
 ```bash
 git clone https://github.com/FrancescoAloe91/qvac-vs-cloud-llms-health-test.git
 ```
 
-### Etichette versione cloud (ChatGPT / Claude / Gemini)
+### Cloud model version labels (ChatGPT / Claude / Gemini)
 
-In sidebar → **Versioni modelli cloud** — oppure modifica `data/cloud_tiers.json`.  
-Le etichette compaiono su schede modello, grafici e tabella ranking.
+Sidebar → **Cloud model versions** — or edit `data/cloud_tiers.json`.  
+Labels appear on model cards, charts, and the ranking table.
 
-### Screenshot già fatti — solo intestazione
+### Annotate existing screenshots
 
-Per aggiungere una barra in alto (caso + tier usati) senza rifare lo screenshot:
+Add a top bar (case + tiers) without re-capturing:
 
 ```bash
-pip install pillow   # una tantum
-# copia i PNG in assets/screenshots/raw/ e aggiorna assets/screenshots/manifest.json
+pip install pillow   # once
+# put PNGs in assets/screenshots/raw/ and update assets/screenshots/manifest.json
 python scripts/annotate_screenshots.py
 ```
 
-Output in `assets/screenshots/annotated/`.
+Output lands in `assets/screenshots/annotated/`.
 
 ---
 
 ## Disclaimer
 
-Solo benchmark dimostrativo. Non sostituisce il parere di un medico.
+Demo benchmark only. Not medical advice and not a substitute for a clinician.
