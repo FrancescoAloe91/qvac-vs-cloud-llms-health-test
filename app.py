@@ -11,13 +11,18 @@ from lib.browser import cloud_url, copy_to_clipboard, open_all_cloud_tabs
 from lib.cases import CASE_IDS, build_prompt, case_meta, case_text_for, default_case_text
 from lib.i18n import DEFAULT_LANG, t
 from lib.lang_switch import apply_language_switch
-from lib.cloud_tiers import (
-    effective_tier_labels,
-    load_tier_labels,
-    normalize_tier_labels_dict,
-    save_tier_labels,
-    tier_label,
-)
+try:
+    from lib.cloud_tiers import (
+        effective_tier_labels,
+        load_tier_labels,
+        normalize_tier_labels_dict,
+        save_tier_labels,
+        tier_label,
+    )
+except Exception as _cloud_tiers_exc:  # pragma: no cover - cloud diagnostics
+    raise ImportError(
+        f"Failed loading lib.cloud_tiers ({type(_cloud_tiers_exc).__name__}: {_cloud_tiers_exc})"
+    ) from _cloud_tiers_exc
 from lib.metrics import TABLE_MODEL_SHORT, _L
 from lib.tiers import MODEL_CONFIG, build_qvac_prompt
 from lib.runtime_env import is_streamlit_cloud

@@ -7,8 +7,15 @@ from plotly.subplots import make_subplots
 
 from lib.cloud_tiers import short_chart_label
 from lib.i18n import t
-from lib.metrics import TABLE_MODEL_SHORT, URGENCY_META, _L
 from lib.tiers import MODEL_CONFIG
+
+
+def _chart_labels():
+    """Lazy import — breaks circular import charts ↔ metrics at module load."""
+    from lib.metrics import TABLE_MODEL_SHORT, URGENCY_META, _L
+
+    return TABLE_MODEL_SHORT, URGENCY_META, _L
+
 
 MODEL_COLORS = {
     "chatgpt": "#10a37f",
@@ -34,12 +41,14 @@ GRID = "#2a3142"
 def _chart_model_label(key: str, full_name: str, tier_labels: Optional[dict] = None) -> str:
     if tier_labels is not None:
         return short_chart_label(key, tier_labels)
-    return TABLE_MODEL_SHORT.get(key, full_name)
+    table_short, _, _ = _chart_labels()
+    return table_short.get(key, full_name)
 
 
 def _chart_bar_tick(key: str, display_name: str) -> str:
     """Short Y-axis labels so bars stay visible in narrow columns; version lives in the table."""
-    return TABLE_MODEL_SHORT.get(key, display_name)
+    table_short, _, _ = _chart_labels()
+    return table_short.get(key, display_name)
 
 
 def _base_layout(title: str, height: int = 500) -> dict:
@@ -70,6 +79,7 @@ def fig_radar(
     tier_labels: Optional[dict] = None,
 ) -> go.Figure:
     _ = tier_labels
+    _, __, _L = _chart_labels()
     L = _L(lang)
     if use_gold:
         col_keys = [L["rel_short"], L["acc_cons_short"]]
@@ -139,6 +149,7 @@ def fig_consensus_ranking_bars(
 ) -> go.Figure:
     """Consensus ranking: best model in the group = 100%, others scale down."""
     _ = tier_labels
+    _, __, _L = _chart_labels()
     L = _L(lang)
     models = [
         _chart_bar_tick(row["key"], row[L["model"]])
@@ -171,6 +182,7 @@ def fig_clinical_ranking_bars(
 ) -> go.Figure:
     """Clinical ranking vs. confirmed diagnosis — absolute % (100% = perfect match with reference)."""
     _ = tier_labels
+    _, __, _L = _chart_labels()
     L = _L(lang)
     score_col = L["score_clin_short"]
     models = [
@@ -199,6 +211,7 @@ def fig_clinical_ranking_bars(
 
 
 def fig_dimensions_grouped(ranking_df, use_gold: bool, lang: str = "en", sem_available: bool = False) -> go.Figure:
+    _, __, _L = _chart_labels()
     L = _L(lang)
     models = ranking_df[L["model"]].tolist()
     fig = go.Figure()
@@ -232,6 +245,7 @@ def fig_privacy_gauges(
 ) -> go.Figure:
     """Gauge per modello: 0% cloud → 100% on-device — tutti sulla stessa riga."""
     _ = tier_labels
+    _, __, _L = _chart_labels()
     L = _L(lang)
     rows = list(ranking_df.iterrows())
     n = max(len(rows), 1)
@@ -375,10 +389,11 @@ def fig_keyword_bar(keyword_counts: dict, total_models: int, lang: str = "en") -
 def fig_urgency_compare(urgency: dict, lang: str = "en", tier_labels: Optional[dict] = None) -> go.Figure:
     _ = tier_labels
     """Confronto del livello di urgenza/triage dichiarato da ciascun modello."""
+    table_short, urgency_meta, _ = _chart_labels()
     keys, scores, colors, labels = [], [], [], []
     for key, u in urgency.items():
-        meta = URGENCY_META.get(u.get("label"), URGENCY_META[None])
-        keys.append(TABLE_MODEL_SHORT.get(key, MODEL_CONFIG_NAME.get(key, key)))
+        meta = urgency_meta.get(u.get("label"), urgency_meta[None])
+        keys.append(table_short.get(key, MODEL_CONFIG_NAME.get(key, key)))
         scores.append(u.get("score") or 0)
         colors.append(meta["color"])
         labels.append(t(meta["label_key"], lang))
@@ -403,6 +418,7 @@ def fig_urgency_compare(urgency: dict, lang: str = "en", tier_labels: Optional[d
 def fig_leaderboard(leaderboard_df, lang: str = "en", tier_labels: Optional[dict] = None) -> go.Figure:
     _ = tier_labels
     """Classifica cumulativa vittorie/score medio tra i round eseguiti in sessione."""
+    _, __, _L = _chart_labels()
     L = _L(lang)
     if leaderboard_df is None or leaderboard_df.empty:
         return go.Figure()
