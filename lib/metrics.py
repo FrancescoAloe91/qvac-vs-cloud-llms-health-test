@@ -4,10 +4,17 @@ from typing import Optional, Tuple
 
 import pandas as pd
 
-from lib.cloud_tiers import table_version_label
 from lib.clinical_scoring import weighted_dimension_composite
 from lib.i18n import t
 from lib.tiers import MODEL_CONFIG
+
+
+def table_version_label(model_key: str, labels=None) -> str:
+    """Lazy wrapper so metrics does not import cloud_tiers at module load."""
+    from lib.cloud_tiers import table_version_label as _impl
+
+    return _impl(model_key, labels)
+
 
 # Single source of truth for clinical dimension weights (0–100 each, true weighted mean).
 # Unified rule (demo-friendly): 40/30/20/10 for both consensus and gold mode.

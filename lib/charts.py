@@ -5,7 +5,6 @@ from typing import Optional
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from lib.cloud_tiers import short_chart_label
 from lib.i18n import t
 from lib.tiers import MODEL_CONFIG
 
@@ -15,6 +14,12 @@ def _chart_labels():
     from lib.metrics import TABLE_MODEL_SHORT, URGENCY_META, _L
 
     return TABLE_MODEL_SHORT, URGENCY_META, _L
+
+
+def _short_chart_label(key: str, tier_labels: Optional[dict] = None) -> str:
+    from lib.cloud_tiers import short_chart_label
+
+    return short_chart_label(key, tier_labels)
 
 
 MODEL_COLORS = {
@@ -40,7 +45,7 @@ GRID = "#2a3142"
 
 def _chart_model_label(key: str, full_name: str, tier_labels: Optional[dict] = None) -> str:
     if tier_labels is not None:
-        return short_chart_label(key, tier_labels)
+        return _short_chart_label(key, tier_labels)
     table_short, _, _ = _chart_labels()
     return table_short.get(key, full_name)
 
