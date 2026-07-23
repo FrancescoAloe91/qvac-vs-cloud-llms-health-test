@@ -103,9 +103,13 @@ def table_version_label(model_key: str, labels: Optional[Dict[str, str]] = None)
 
 
 def _qvac_runtime_label() -> str:
-    from lib import medpsy
+    """Best-effort local runtime label; safe when Ollama is absent (Streamlit Cloud)."""
+    try:
+        from lib import medpsy
 
-    return medpsy.runtime_tier_label()
+        return medpsy.runtime_tier_label()
+    except Exception:
+        return "MedPsy-4B · on-device (local setup)"
 
 
 def effective_tier_labels(labels: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -119,21 +123,39 @@ def _blank_defaults() -> Dict[str, str]:
     return {k: "" for k in DEFAULT_TIER_LABELS}
 
 
+def _can_persist_tier_labels() -> bool:
+    """Streamlit Cloud mounts the repo read-only — never write there."""
+    try:
+        from lib.runtime_env import is_streamlit_cloud
+
+        if is_streamlit_cloud():
+            return False
+    except Exception:
+        pass
+    return True
+
+
 def _persist_tier_labels_file(labels: Dict[str, str]) -> None:
-    _TIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "chatgpt": _sanitize_cloud_tier_label(
-            "chatgpt", labels.get("chatgpt") or DEFAULT_TIER_LABELS.get("chatgpt", "")
-        ),
-        "claude": _sanitize_cloud_tier_label(
-            "claude", labels.get("claude") or DEFAULT_TIER_LABELS.get("claude", "")
-        ),
-        "gemini": _sanitize_cloud_tier_label(
-            "gemini", labels.get("gemini") or DEFAULT_TIER_LABELS.get("gemini", "")
-        ),
-        "qvac": _qvac_runtime_label(),
-    }
-    _TIERS_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if not _can_persist_tier_labels():
+        return
+    try:
+        _TIERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "chatgpt": _sanitize_cloud_tier_label(
+                "chatgpt", labels.get("chatgpt") or DEFAULT_TIER_LABELS.get("chatgpt", "")
+            ),
+            "claude": _sanitize_cloud_tier_label(
+                "claude", labels.get("claude") or DEFAULT_TIER_LABELS.get("claude", "")
+            ),
+            "gemini": _sanitize_cloud_tier_label(
+                "gemini", labels.get("gemini") or DEFAULT_TIER_LABELS.get("gemini", "")
+            ),
+            "qvac": _qvac_runtime_label(),
+        }
+        _TIERS_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError:
+        # Read-only or missing write perms (cloud / locked checkout).
+        return
 
 
 def load_tier_labels() -> Dict[str, str]:
